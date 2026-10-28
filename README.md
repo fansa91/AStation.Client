@@ -55,7 +55,7 @@ AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直�
 - 首页推荐、频道导航
 - 排行榜：全站 / 各频道，日榜、三日榜、周榜
 - 番剧库、我的追番（需登录）、选集连播
-- 直播大厅：分区筛选、进直播间看 FLV 流
+- 直播大厅：分区筛选、进直播间看 FLV 流；直播间与点播共用同一套播放器控制层，右栏可查直播信息与码率档位
 - 账号登录（密码登录）
 
 **播放**
@@ -131,6 +131,7 @@ git push origin v0.1.0
 
 - **播放链路**：点播 HLS 经本地代理转发——CDN 签名挂在 m3u8 的 query 上，相对分片路径会丢签名导致 403，代理把分片重写成绝对地址并保留原 query
 - **直播 FLV**：Media Foundation 不支持 FLV，用 FFmpegInteropX 解码后交给 `MediaPlayer`
+- **统一播放器层**：`Controls/PlayerOverlay.xaml` 一套外壳同时服务点播与直播（视频区 / 弹幕层 / 顶栏 / 160px 控制层 / 气泡 / 迷你进度 / 全屏 / 自动隐藏），直播形态收成 96px 单行并隐藏进度与倍速；页面只负责取流与业务数据
 - **弹幕**：用 16ms `DispatcherTimer` 逐帧推进，不用 Storyboard 动 `TranslateTransform`（WinUI 3 下不插值）
 - **全屏**：Win32 `WS_POPUP` + `SetWindowPos` 铺满显示器，同时抵消 NavigationView 预留的 48px 与列间距
 
@@ -141,7 +142,7 @@ git push origin v0.1.0
 - 评论表情码（`[emot=acfun,...]`）暂未渲染成图片
 - 搜索页与用户空间页目前只有界面骨架，还未接入数据
 - 播放器暂无键盘快捷键，只有 `Esc` 退出全屏
-- 直播间弹幕未实现
+- 直播间弹幕数据通道（快手 `zt.live` 的 protobuf 长连接）尚未接入：播放器里的弹幕层与开关已就位，当前不会显示弹幕
 
 ## 声明
 

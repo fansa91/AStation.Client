@@ -1,0 +1,591 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+    统一播放器层（点播 / 直播共用）
+
+    空间结构对齐 Bili.Copilot 的 PlayerOverlay + OverlayTransportControls：
+      · 顶部标题条 60px：返回 / 退出全屏 / 居中标题 / 集信息（随控制层一起显隐）
+      · 底部控制层 160px：上行 = 左信息位 · 中播放组 · 右附加控制；下行 = 时间 + 进度 + 时长
+        直播形态收成 96px 单行（没有进度可拖）
+      · 控制层整体淡入淡出 + 上移 8px，收起后底部留一条 4px 细进度
+      · 拖动进度 / 调倍速的气泡单独一层，控制层收起时也要能看见
+
+    播放内核不动：仍然是外部页面拿到 MediaSource / FFmpegInteropX 的结果后塞进 MediaElement。
+-->
+<UserControl
+    x:Class="AStation_Client.Controls.PlayerOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:AStation_Client.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <!-- 播放器图标按钮：32×32 圆形、透明底、白色前景（对应 Bili.Copilot 的 BasicPlayerIconButtonStyle） -->
+        <Style x:Key="PlayerIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- 播放器文字按钮（倍速 / 清晰度 / 线路）：胶囊底 + 12 号字 -->
+        <Style x:Key="PlayerTextButtonStyle" TargetType="Button">
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Background" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- 播放/暂停主按钮：52 圆形白底黑字 -->
+        <Style x:Key="PlayerPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="52" />
+            <Setter Property="Height" Value="52" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="#E6FFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="26" />
+            <Setter Property="Foreground" Value="#FF000000" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- 播放器里的时间 / 小字 -->
+        <Style x:Key="PlayerTimeTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="#B3FFFFFF" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="IsTextScaleFactorEnabled" Value="False" />
+        </Style>
+
+        <!-- 播放器内的下拉面板：紧凑内边距 + 实底（浮在视频上要压得住画面） -->
+        <Style x:Key="PlayerFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+            <!-- Flyout 本身没有 RequestedTheme，深色主题挂在 FlyoutPresenter 上 -->
+            <Setter Property="RequestedTheme" Value="Dark" />
+            <Setter Property="Background" Value="#F21C1C1C" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MaxWidth" Value="480" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid
+        x:Name="PlayerHost"
+        Background="Black"
+        CornerRadius="10"
+        SizeChanged="PlayerHost_SizeChanged">
+
+        <!-- 关掉系统传输控件，控制层自己画 -->
+        <MediaPlayerElement
+            x:Name="Player"
+            AreTransportControlsEnabled="False"
+            AutoPlay="True"
+            RequestedTheme="Dark"
+            Stretch="Uniform" />
+
+        <!-- 弹幕层（不挡交互） -->
+        <Grid x:Name="DanmakuLayer" IsHitTestVisible="False">
+            <controls:DanmakuPanel x:Name="DanmakuControl" />
+        </Grid>
+
+        <!-- 加载 / 状态 -->
+        <StackPanel
+            x:Name="StatusPanel"
+            MaxWidth="460"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="10">
+            <ProgressRing
+                x:Name="LoadingRing"
+                Width="28"
+                Height="28"
+                Foreground="White"
+                IsActive="True" />
+            <TextBlock
+                x:Name="StatusText"
+                Foreground="White"
+                Text="正在加载播放数据…"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- 直播标识（右上角常显） -->
+        <Border
+            x:Name="LiveBadge"
+            Margin="0,12,12,0"
+            Padding="8,3"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Background="#CCF0483E"
+            CornerRadius="4"
+            Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Spacing="5">
+                <Ellipse
+                    Width="6"
+                    Height="6"
+                    VerticalAlignment="Center"
+                    Fill="White" />
+                <TextBlock
+                    x:Name="LiveBadgeText"
+                    FontSize="11"
+                    Foreground="White"
+                    IsTextScaleFactorEnabled="False"
+                    Text="LIVE" />
+            </StackPanel>
+        </Border>
+
+        <!-- ══════════ 控制层：顶栏 + 控制条 ══════════ -->
+        <Grid x:Name="ControlsLayer" RequestedTheme="Dark">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="ControlsTransform" />
+            </Grid.RenderTransform>
+
+            <!-- ── 顶部标题条 ── -->
+            <Grid
+                x:Name="TopBar"
+                Height="60"
+                VerticalAlignment="Top">
+                <Grid.Background>
+                    <!-- 顶部渐变要比底部更实一些：画面亮的时候白色标题/按钮才站得住 -->
+                    <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                        <GradientStop Offset="0" Color="#E6000000" />
+                        <GradientStop Offset="0.55" Color="#73000000" />
+                        <GradientStop Offset="1" Color="#00000000" />
+                    </LinearGradientBrush>
+                </Grid.Background>
+                <Grid Padding="12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="BackButton"
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        AutomationProperties.Name="返回"
+                        Background="#66000000"
+                        BorderThickness="0"
+                        Click="BackButton_Click"
+                        CornerRadius="16"
+                        Foreground="White"
+                        ToolTipService.ToolTip="返回">
+                        <FontIcon FontSize="13" Glyph="&#xE72B;" />
+                    </Button>
+
+                    <Button
+                        x:Name="ExitFullscreenButton"
+                        Grid.Column="1"
+                        Height="30"
+                        Margin="6,0,0,0"
+                        Padding="10,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="退出全屏"
+                        Background="#80000000"
+                        BorderThickness="0"
+                        Click="FullscreenButton_Click"
+                        CornerRadius="15"
+                        Foreground="White"
+                        ToolTipService.ToolTip="退出全屏（Esc）">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="11" Glyph="&#xE73F;" />
+                            <TextBlock FontSize="12" Text="退出全屏" />
+                        </StackPanel>
+                    </Button>
+
+                    <TextBlock
+                        x:Name="OverlayTitle"
+                        Grid.Column="2"
+                        MaxWidth="520"
+                        Margin="12,0"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Foreground="White"
+                        TextTrimming="CharacterEllipsis" />
+
+                    <TextBlock
+                        x:Name="OverlayEpisodeText"
+                        Grid.Column="3"
+                        Margin="0,0,4,0"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="#99FFFFFF" />
+                </Grid>
+            </Grid>
+
+            <!-- ── 底部控制层 ── -->
+            <Grid
+                x:Name="ControlBar"
+                Height="160"
+                VerticalAlignment="Bottom"
+                PointerEntered="ControlBar_PointerEntered"
+                PointerExited="ControlBar_PointerExited">
+                <Grid.Background>
+                    <LinearGradientBrush StartPoint="0.5,0" EndPoint="0.5,1">
+                        <GradientStop Offset="0" Color="#00000000" />
+                        <GradientStop Offset="0.35" Color="#99000000" />
+                        <GradientStop Offset="0.7" Color="#E6000000" />
+                        <GradientStop Offset="1" Color="#FF000000" />
+                    </LinearGradientBrush>
+                </Grid.Background>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 上行：左信息位 / 中播放控制 / 右附加控制 -->
+                <Grid Padding="16,0,10,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左侧信息位：标题 + 作者 · 当前集 -->
+                    <StackPanel
+                        x:Name="PlayerInfoSlot"
+                        Margin="0,0,16,0"
+                        VerticalAlignment="Center"
+                        Spacing="3">
+                        <TextBlock
+                            x:Name="PlayerTitleText"
+                            MaxWidth="260"
+                            FontSize="14"
+                            Foreground="White"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            x:Name="PlayerSubText"
+                            MaxWidth="260"
+                            FontSize="12"
+                            Foreground="#99FFFFFF"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <!-- 中：上一集 / 后退 10s / 播放暂停 / 前进 10s / 下一集 -->
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                        <Button
+                            x:Name="PrevButton"
+                            Margin="0,0,8,0"
+                            AutomationProperties.Name="上一集"
+                            Click="PrevButton_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="上一集 / 上一P">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#4DFFFFFF" />
+                                <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                            </Button.Resources>
+                            <FontIcon FontSize="14" Glyph="&#xE892;" />
+                        </Button>
+                        <Button
+                            x:Name="BackwardButton"
+                            Margin="0,0,8,0"
+                            AutomationProperties.Name="后退10秒"
+                            Click="SkipBackward_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="后退 10 秒">
+                            <FontIcon FontSize="14" Glyph="&#xE100;" />
+                        </Button>
+                        <Button
+                            x:Name="PlayPauseButton"
+                            AutomationProperties.Name="播放暂停"
+                            Click="PlayPauseButton_Click"
+                            Style="{StaticResource PlayerPrimaryButtonStyle}"
+                            ToolTipService.ToolTip="播放 / 暂停">
+                            <FontIcon x:Name="PlayPauseIcon" FontSize="20" Glyph="&#xE768;" />
+                        </Button>
+                        <Button
+                            x:Name="ForwardButton"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="前进10秒"
+                            Click="SkipForward_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="前进 10 秒">
+                            <FontIcon FontSize="14" Glyph="&#xE102;" />
+                        </Button>
+                        <Button
+                            x:Name="NextButton"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="下一集"
+                            Click="NextButton_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="下一集 / 下一P">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#4DFFFFFF" />
+                                <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                            </Button.Resources>
+                            <FontIcon FontSize="14" Glyph="&#xE893;" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- 右：音量 / 倍速 / 弹幕 / 清晰度 / 线路 / 全屏 -->
+                    <StackPanel
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Orientation="Horizontal"
+                        Spacing="6">
+
+                        <Button
+                            x:Name="MuteButton"
+                            AutomationProperties.Name="静音"
+                            Click="MuteButton_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="静音 / 取消静音">
+                            <FontIcon x:Name="VolumeIcon" FontSize="14" Glyph="&#xE767;" />
+                        </Button>
+                        <Slider
+                            x:Name="VolumeSlider"
+                            AutomationProperties.Name="音量"
+                            Width="80"
+                            VerticalAlignment="Center"
+                            Maximum="1"
+                            Minimum="0"
+                            StepFrequency="0.01"
+                            ToolTipService.ToolTip="音量"
+                            Value="1"
+                            ValueChanged="VolumeSlider_ValueChanged" />
+
+                        <Button
+                            x:Name="SpeedButton"
+                            AutomationProperties.Name="倍速"
+                            Style="{StaticResource PlayerTextButtonStyle}"
+                            ToolTipService.ToolTip="倍速播放">
+                            <TextBlock x:Name="SpeedText" Text="1.0x" />
+                            <Button.Flyout>
+                                <Flyout
+                                    Placement="Top"
+                                    Closed="SpeedFlyout_Closed"
+                                    FlyoutPresenterStyle="{StaticResource PlayerFlyoutPresenterStyle}"
+                                    Opened="SpeedFlyout_Opened">
+                                    <StackPanel Spacing="10" Width="304">
+                                        <Grid x:Name="SpeedQuickPanel" Height="30" ColumnSpacing="4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition />
+                                                <ColumnDefinition />
+                                                <ColumnDefinition />
+                                                <ColumnDefinition />
+                                                <ColumnDefinition />
+                                                <ColumnDefinition />
+                                            </Grid.ColumnDefinitions>
+                                            <ToggleButton
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="0.5x"
+                                                Tag="0.5" />
+                                            <ToggleButton
+                                                Grid.Column="1"
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="0.75x"
+                                                Tag="0.75" />
+                                            <ToggleButton
+                                                Grid.Column="2"
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="1.0x"
+                                                Tag="1.0" />
+                                            <ToggleButton
+                                                Grid.Column="3"
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="1.25x"
+                                                Tag="1.25" />
+                                            <ToggleButton
+                                                Grid.Column="4"
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="1.5x"
+                                                Tag="1.5" />
+                                            <ToggleButton
+                                                Grid.Column="5"
+                                                HorizontalAlignment="Stretch"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="SpeedQuickButton_Click"
+                                                Content="2.0x"
+                                                Tag="2.0" />
+                                        </Grid>
+                                        <Slider
+                                            x:Name="SpeedSlider"
+                                            Margin="0,0,0,-6"
+                                            Maximum="2"
+                                            Minimum="0.5"
+                                            StepFrequency="0.05"
+                                            Value="1"
+                                            ValueChanged="SpeedSlider_ValueChanged" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <ToggleButton
+                            x:Name="DanmakuToggle"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            AutomationProperties.Name="弹幕开关"
+                            Click="DanmakuToggle_Click"
+                            Content="弹"
+                            CornerRadius="16"
+                            FontSize="12"
+                            FontWeight="Black"
+                            IsChecked="True"
+                            ToolTipService.ToolTip="开 / 关弹幕" />
+
+                        <Button
+                            x:Name="QualityButton"
+                            AutomationProperties.Name="清晰度"
+                            Style="{StaticResource PlayerTextButtonStyle}"
+                            ToolTipService.ToolTip="清晰度">
+                            <TextBlock x:Name="QualityText" Text="清晰度" />
+                            <Button.Flyout>
+                                <Flyout Placement="Top" FlyoutPresenterStyle="{StaticResource PlayerFlyoutPresenterStyle}">
+                                    <ContentPresenter x:Name="QualityHost" MinWidth="200" />
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <Button
+                            x:Name="CdnButton"
+                            AutomationProperties.Name="线路"
+                            Style="{StaticResource PlayerTextButtonStyle}"
+                            ToolTipService.ToolTip="切换线路，播放卡顿时可换源">
+                            <TextBlock x:Name="CdnText" Text="线路" />
+                            <Button.Flyout>
+                                <Flyout Placement="Top" FlyoutPresenterStyle="{StaticResource PlayerFlyoutPresenterStyle}">
+                                    <ContentPresenter x:Name="LineHost" MinWidth="200" />
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <Button
+                            x:Name="FullscreenButton"
+                            AutomationProperties.Name="全屏"
+                            Click="FullscreenButton_Click"
+                            Style="{StaticResource PlayerIconButtonStyle}"
+                            ToolTipService.ToolTip="全屏（Esc 退出）">
+                            <FontIcon x:Name="FullscreenIcon" FontSize="14" Glyph="&#xE740;" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 下行：当前时间 + 进度条 + 总时长（直播形态隐藏） -->
+                <Grid
+                    x:Name="ProgressRow"
+                    Grid.Row="1"
+                    Margin="16,0,16,12"
+                    ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="56" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="PositionText"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource PlayerTimeTextStyle}"
+                        Text="00:00" />
+                    <Slider
+                        x:Name="ProgressSlider"
+                        Grid.Column="1"
+                        Height="24"
+                        MinWidth="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="播放进度"
+                        IsThumbToolTipEnabled="False"
+                        Maximum="1"
+                        Minimum="0"
+                        PointerCaptureLost="ProgressSlider_PointerCaptureLost"
+                        PointerPressed="ProgressSlider_PointerPressed"
+                        PointerReleased="ProgressSlider_PointerReleased"
+                        ToolTipService.ToolTip="拖动调整播放进度"
+                        ValueChanged="ProgressSlider_ValueChanged" />
+                    <TextBlock
+                        x:Name="DurationText"
+                        Grid.Column="2"
+                        HorizontalAlignment="Left"
+                        Style="{StaticResource PlayerTimeTextStyle}"
+                        Text="00:00" />
+                </Grid>
+            </Grid>
+        </Grid>
+
+        <!-- 中部提示气泡：拖动进度 / 调整倍速（独立一层，控制层收起时也要能看见） -->
+        <Border
+            x:Name="SeekBubble"
+            Margin="0,76,0,0"
+            Padding="18,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Background="#CC1F1F1F"
+            CornerRadius="16"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="SeekBubbleText"
+                FontSize="14"
+                Foreground="White"
+                IsTextScaleFactorEnabled="False"
+                Text="00:00 / 00:00" />
+        </Border>
+        <Border
+            x:Name="SpeedBubble"
+            Margin="0,76,0,0"
+            Padding="18,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Background="#CC1F1F1F"
+            CornerRadius="16"
+            Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock
+                    FontSize="13"
+                    Foreground="#B3FFFFFF"
+                    Text="倍速播放" />
+                <TextBlock
+                    x:Name="SpeedBubbleText"
+                    FontSize="14"
+                    Foreground="#FF8A00"
+                    Text="1.0x" />
+            </StackPanel>
+        </Border>
+
+        <!-- 控制层收起时，底部留一条细进度 -->
+        <ProgressBar
+            x:Name="MiniProgress"
+            Height="4"
+            VerticalAlignment="Bottom"
+            Background="Transparent"
+            Foreground="#E6FFFFFF"
+            Maximum="1"
+            Minimum="0"
+            Visibility="Collapsed" />
+    </Grid>
+</UserControl>
