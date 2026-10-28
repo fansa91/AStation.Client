@@ -1,7 +1,6 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
@@ -34,7 +33,9 @@ public sealed partial class LiveRoomPage : Page
     /// <summary>控制栏「清晰度」Flyout 里的码率列表（与侧栏列表共用同一份数据）</summary>
     private ListView _flyoutQualityList = null!;
 
-    private Brush? _savedPageBackground;
+    // ── 响应式断点：与点播页保持一致 ──
+    private const double BreakpointStack = 1040;
+    private const double BreakpointSideWide = 1280;
 
     public LiveRoomPage()
     {
@@ -51,7 +52,106 @@ public sealed partial class LiveRoomPage : Page
         Overlay.FullscreenChanged += Overlay_FullscreenChanged;
         Overlay.MediaFailed += Overlay_MediaFailed;
 
-        _savedPageBackground = PageRoot.Background;
+        // 弹幕分页：通道未接入，用统一状态面板说明，不再是几段散文字
+        DanmakuState.ShowEmpty(
+            "直播弹幕通道尚未接入",
+            "弹幕层与开关已经就位，等快手 zt.live 的 protobuf 长连接接入后可直接复用播放器内的弹幕层。",
+            glyph: "\uE90A");
+
+        SizeChanged += (_, e) => ApplyResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
+        Loaded += (_, _) => ApplyResponsiveLayout(ActualWidth, ActualHeight);
+    }
+
+    // ───────────────────────────── 响应式 ─────────────────────────────
+
+    private bool _stacked;
+
+    private static Thickness PagePaddingFor(double width)
+        => width < 900 ? new Thickness(16, 16, 16, 20) : new Thickness(24, 20, 24, 24);
+
+    /// <summary>与点播页同构：宽屏并排、窄屏堆叠、全屏单独处理</summary>
+    private void ApplyResponsiveLayout(double width, double height)
+    {
+        if (width <= 0 || height <= 0) return;
+        if (Overlay.IsFullscreen)
+        {
+            Overlay.MaxWindowedHeight = 0;
+            Overlay.MaxWidth = double.PositiveInfinity;
+            Overlay.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
+        }
+
+        LayoutGrid.Padding = PagePaddingFor(width);
+
+        bool stacked = width < BreakpointStack;
+        _stacked = stacked;
+
+        if (stacked)
+        {
+            SideColumn.Width = new GridLength(0);
+            HostSidePanel(stacked: true);
+
+            BodyScroll.VerticalScrollMode = ScrollMode.Enabled;
+            BodyScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+
+            BodyGrid.RowDefinitions[0].Height = GridLength.Auto;
+            StackedRow.Height = GridLength.Auto;
+
+            Grid.SetRowSpan(MainColumn, 1);
+            SidePanel.Height = 320;
+        }
+        else
+        {
+            SideColumn.Width = new GridLength(width >= BreakpointSideWide ? 380 : 340);
+            HostSidePanel(stacked: false);
+
+            BodyScroll.VerticalScrollMode = ScrollMode.Disabled;
+            BodyScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+
+            BodyGrid.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
+            StackedRow.Height = new GridLength(0);
+
+            Grid.SetRowSpan(MainColumn, 1);
+            SidePanel.Height = double.NaN;
+        }
+
+        // 与点播页同一套算式：宽度由左列决定（正常就是 16:9），这里只是超宽矮窗口的安全阀；
+        // 堆叠模式下方能滚，上限放宽，优先保画面大小
+        var padding = PagePaddingFor(width);
+        double available = height - padding.Top - padding.Bottom - 12;
+        double maxPlayerHeight = Math.Max(180, Math.Round(available * (stacked ? 0.82 : 0.68)));
+        Overlay.MaxWindowedHeight = maxPlayerHeight;
+        Overlay.MaxWidth = Math.Round(maxPlayerHeight * Overlay.AspectRatio);
+        Overlay.HorizontalAlignment = HorizontalAlignment.Center;
+    }
+
+    /// <summary>
+    /// 与点播页相同的侧栏宿主切换：宽屏挂在 LayoutGrid 右列跨两行，窄屏挂到内容流最下方。
+    /// </summary>
+    private void HostSidePanel(bool stacked)
+    {
+        if (stacked)
+        {
+            if (ReferenceEquals(SidePanel.Parent, BodyGrid)) return;
+
+            LayoutGrid.Children.Remove(SidePanel);
+            Grid.SetColumn(SidePanel, 0);
+            Grid.SetRow(SidePanel, 1);
+            Grid.SetColumnSpan(SidePanel, 1);
+            Grid.SetRowSpan(SidePanel, 1);
+            BodyGrid.Children.Add(SidePanel);
+        }
+        else
+        {
+            if (ReferenceEquals(SidePanel.Parent, LayoutGrid)) return;
+
+            BodyGrid.Children.Remove(SidePanel);
+            Grid.SetColumn(SidePanel, 1);
+            Grid.SetRow(SidePanel, 0);
+            Grid.SetColumnSpan(SidePanel, 1);
+            Grid.SetRowSpan(SidePanel, 2);
+            LayoutGrid.Children.Add(SidePanel);
+        }
     }
 
     // ───────────────────────────── 清晰度 / 线路 ─────────────────────────────
@@ -124,22 +224,16 @@ public sealed partial class LiveRoomPage : Page
 
         TitleText.Text = title;
         AuthorText.Text = author;
-        SideAuthorText.Text = author;
+        UidText.Text = $"UID {args.AuthorId}";
         OnlineText.Text = online;
-        SideOnlineText.Text = online.Replace("在线 ", string.Empty);
         CategoryText.Text = category;
-        SideCategoryText.Text = category;
-        MetaText.Text = $"{category} · {online}";
         LiveIdText.Text = string.IsNullOrWhiteSpace(args.LiveId) ? "--" : args.LiveId;
-        SideUidText.Text = $"UID {args.AuthorId}";
 
         if (!string.IsNullOrWhiteSpace(args.AuthorAvatar))
         {
             try
             {
-                var avatar = new BitmapImage(new Uri(args.AuthorAvatar));
-                Avatar.ProfilePicture = avatar;
-                SideAvatar.ProfilePicture = avatar;
+                Avatar.ProfilePicture = new BitmapImage(new Uri(args.AuthorAvatar));
             }
             catch { /* 头像失败不影响拉流 */ }
         }
@@ -164,19 +258,19 @@ public sealed partial class LiveRoomPage : Page
     private async Task LoadStreamsAsync()
     {
         Overlay.ShowStatus("正在获取直播流…");
+        LineState.ShowLoading("正在获取码率档位…");
 
         _streams = await _livePlay.GetStreamsAsync(_authorId, _liveId);
 
         if (_streams is null || !_streams.HasStream)
         {
-            Overlay.ShowStatus(_streams?.ErrorMessage ?? "拿不到直播流地址", spinner: false);
-            SideEmptyHint.Text = _streams?.ErrorMessage ?? "拿不到直播流地址";
-            SideEmptyHint.Visibility = Visibility.Visible;
+            string message = _streams?.ErrorMessage ?? "拿不到直播流地址";
+            Overlay.ShowStatus(message, spinner: false);
+            LineState.ShowError("拉流失败", message, "重试");
             return;
         }
 
         StreamNameText.Text = string.IsNullOrWhiteSpace(_streams.StreamName) ? "--" : _streams.StreamName;
-        SideStreamText.Text = StreamNameText.Text;
         ListCountText.Text = $"{_streams.Qualities.Count} 档";
 
         int index = ResolveQualityIndex(_streams);
@@ -189,8 +283,14 @@ public sealed partial class LiveRoomPage : Page
         _suppressQualityChange = false;
 
         Overlay.SetQualityText(_streams.Qualities[index].Name);
+        LineState.Hide();
 
         await PlayQualityAsync(_streams.Qualities[index]);
+    }
+
+    private async void LineState_ActionClick(object sender, EventArgs e)
+    {
+        await LoadStreamsAsync();
     }
 
     private static int ResolveQualityIndex(LiveStreamResult streams)
@@ -242,32 +342,35 @@ public sealed partial class LiveRoomPage : Page
         args.Handled = true;
     }
 
-    /// <summary>全屏时收起右栏与房间信息，让直播画面真正铺满</summary>
+    /// <summary>全屏时内容行高度归零，直播画面铺满；退出时按当前宽度重算</summary>
     private void Overlay_FullscreenChanged(object? sender, bool fullscreen)
     {
         if (fullscreen)
         {
             LayoutGrid.Padding = new Thickness(0);
+            LayoutGrid.RowSpacing = 0;
             LayoutGrid.ColumnSpacing = 0;
             SideColumn.Width = new GridLength(0);
             SidePanel.Visibility = Visibility.Collapsed;
-            InfoPanel.Visibility = Visibility.Collapsed;
-            RootScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-            RootScroll.VerticalScrollMode = ScrollMode.Disabled;
-
-            PageRoot.Background = new SolidColorBrush(Microsoft.UI.Colors.Black);
+            // 窗口模式给播放器设过 MaxWidth（居中收窄），全屏必须还原成铺满
+            Overlay.MaxWidth = double.PositiveInfinity;
+            Overlay.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PlayerRow.Height = new GridLength(1, GridUnitType.Star);
+            ContentRow.Height = new GridLength(0);
+            BodyScroll.Visibility = Visibility.Collapsed;
+            FullscreenBackdrop.Visibility = Visibility.Visible;
         }
         else
         {
-            LayoutGrid.Padding = new Thickness(20, 4, 20, 24);
+            LayoutGrid.RowSpacing = 12;
             LayoutGrid.ColumnSpacing = 18;
-            SideColumn.Width = new GridLength(340);
             SidePanel.Visibility = Visibility.Visible;
-            InfoPanel.Visibility = Visibility.Visible;
-            RootScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            RootScroll.VerticalScrollMode = ScrollMode.Enabled;
+            PlayerRow.Height = GridLength.Auto;
+            ContentRow.Height = new GridLength(1, GridUnitType.Star);
+            BodyScroll.Visibility = Visibility.Visible;
+            FullscreenBackdrop.Visibility = Visibility.Collapsed;
 
-            PageRoot.Background = _savedPageBackground ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            ApplyResponsiveLayout(ActualWidth, ActualHeight);
         }
     }
 
@@ -277,38 +380,23 @@ public sealed partial class LiveRoomPage : Page
         else Frame.Navigate(typeof(LivePage));
     }
 
-    // ───────────────────────────── 右栏切换 ─────────────────────────────
+    // ───────────────────────────── 右栏切换（清晰度 / 弹幕） ─────────────────────────────
 
     private void SideTab_Click(object sender, RoutedEventArgs e)
     {
-        int index = ReferenceEquals(sender, LineTab) ? 1
-            : ReferenceEquals(sender, DanmakuTab) ? 2
-            : 0;
-
-        SelectSideTab(index);
+        SelectSideTab(ReferenceEquals(sender, DanmakuTab) ? 1 : 0);
     }
 
     private void SelectSideTab(int index)
     {
-        InfoTab.IsChecked = index == 0;
-        LineTab.IsChecked = index == 1;
-        DanmakuTab.IsChecked = index == 2;
+        LineTab.IsChecked = index == 0;
+        DanmakuTab.IsChecked = index == 1;
 
-        InfoPanelContent.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
-        LinePanelContent.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
-        DanmakuPanelContent.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
+        LinePanelContent.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
+        DanmakuPanelContent.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
 
-        ListTitle.Text = index switch
-        {
-            1 => "清晰度 / 线路",
-            2 => "弹幕",
-            _ => "直播信息"
-        };
-
-        ListCountText.Text = index switch
-        {
-            1 => _streams is { HasStream: true } ? $"{_streams.Qualities.Count} 档" : string.Empty,
-            _ => string.Empty
-        };
+        ListCountText.Text = index == 0 && _streams is { HasStream: true }
+            ? $"{_streams.Qualities.Count} 档"
+            : string.Empty;
     }
 }

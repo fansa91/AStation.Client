@@ -1,8 +1,9 @@
-<?xml version="1.0" encoding="utf-8" ?>
+﻿<?xml version="1.0" encoding="utf-8" ?>
 <!--
     直播间播放页：骨架与点播页完全一致
-      左列 = 统一播放器层（PlayerOverlay 直播形态）+ 房间信息
-      右列 = 340 侧栏（直播信息 / 清晰度·线路 / 弹幕）
+      Row0 播放器（PlayerOverlay 直播形态：单行控制条 / 无进度 / 无倍速）
+      Row1 左列 = 房间信息（标题 / 主播 / 在线 / 分区 / 直播 ID / 流名称 / 解码）
+           右列 = 清晰度·线路 / 弹幕（两个分页）
 
     播放链路不动：仍然是 LivePlayService 取快手 FLV → FFmpegInteropX → MediaPlayerElement。
 -->
@@ -36,102 +37,138 @@
                     Grid.Column="1"
                     VerticalAlignment="Center"
                     FontSize="11"
-                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{x:Bind BitrateText}" />
             </Grid>
         </DataTemplate>
 
-        <!-- 直播信息面板里的键值行 -->
         <Style x:Key="SideKeyTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{StaticResource TextFillColorSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="SideValueTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="IsTextSelectionEnabled" Value="True" />
             <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
     </Page.Resources>
 
-    <Grid x:Name="PageRoot" Background="{StaticResource AppShellAcrylicBrush}">
-        <ScrollViewer
-            x:Name="RootScroll"
-            HorizontalScrollBarVisibility="Disabled"
-            HorizontalScrollMode="Disabled"
-            VerticalScrollBarVisibility="Auto">
-            <Grid
-                x:Name="LayoutGrid"
-                Padding="20,4,20,24"
-                ColumnSpacing="18">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition x:Name="SideColumn" Width="340" />
-                </Grid.ColumnDefinitions>
+    <Grid x:Name="PageRoot" Background="Transparent">
 
-                <!-- ══════════════ 左：播放器 + 房间信息 ══════════════ -->
-                <StackPanel Grid.Column="0" Spacing="12">
+        <Border
+            x:Name="FullscreenBackdrop"
+            Background="{ThemeResource PlayerBackdropBrush}"
+            Visibility="Collapsed" />
 
-                    <!-- 统一播放器层（与点播页共用），直播形态：无进度条 / 无倍速 / 保留音量·清晰度·弹幕·全屏 -->
-                    <controls:PlayerOverlay x:Name="Overlay" />
+        <Grid
+            x:Name="LayoutGrid"
+            Padding="{StaticResource PagePadding}"
+            ColumnSpacing="18"
+            RowSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition x:Name="SideColumn" Width="340" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="PlayerRow" Height="Auto" />
+                <RowDefinition x:Name="ContentRow" Height="*" />
+            </Grid.RowDefinitions>
 
-                    <!-- 标题 / 主播 / 房间数据（全屏时整块隐藏） -->
-                    <StackPanel x:Name="InfoPanel" Spacing="12">
+            <!-- 统一播放器层（与点播页共用），直播形态 -->
+            <controls:PlayerOverlay
+                x:Name="Overlay"
+                Grid.Row="0"
+                Grid.Column="0" />
+
+            <ScrollViewer
+                x:Name="BodyScroll"
+                Grid.Row="1"
+                Grid.Column="0"
+                HorizontalContentAlignment="Stretch"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalContentAlignment="Stretch"
+                VerticalScrollBarVisibility="Hidden"
+                VerticalScrollMode="Disabled">
+
+                <Grid x:Name="BodyGrid" RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition x:Name="StackedRow" Height="0" />
+                    </Grid.RowDefinitions>
+
+                    <!-- ═══════════ 左列：房间信息 ═══════════ -->
+                    <StackPanel
+                        x:Name="MainColumn"
+                        Grid.Row="0"
+                        Grid.RowSpan="2"
+                        Spacing="12">
+
                         <TextBlock
                             x:Name="TitleText"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            MaxLines="2"
                             Text="正在加载…"
+                            TextTrimming="CharacterEllipsis"
                             TextWrapping="Wrap" />
 
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" MinWidth="120" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
                             <PersonPicture
                                 x:Name="Avatar"
-                                Width="40"
-                                Height="40"
+                                Width="38"
+                                Height="38"
                                 VerticalAlignment="Center" />
 
                             <StackPanel
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
                                 Spacing="2">
-                                <TextBlock x:Name="AuthorText" Style="{StaticResource BodyStrongTextBlockStyle}" Text="主播" />
                                 <TextBlock
-                                    x:Name="MetaText"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
+                                    x:Name="AuthorText"
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="主播"
                                     TextTrimming="CharacterEllipsis" />
+                                <TextBlock x:Name="UidText" Style="{StaticResource MetaTextStyle}" Text="UID --" />
                             </StackPanel>
 
                             <StackPanel
                                 Grid.Column="2"
-                                Orientation="Horizontal"
                                 VerticalAlignment="Center"
-                                Spacing="8">
+                                Orientation="Horizontal"
+                                Spacing="6">
+                                <!-- 直播状态徽标：底色与文字都用同一个语义色，不再硬编码两处 -->
                                 <Border
-                                    Padding="10,4"
-                                    Background="#33F0483E"
+                                    x:Name="LiveStateBadge"
+                                    Padding="10,5"
+                                    Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
                                     CornerRadius="12">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <Ellipse
                                             Width="6"
                                             Height="6"
                                             VerticalAlignment="Center"
-                                            Fill="#FFF0483E" />
+                                            Fill="{ThemeResource SystemFillColorCriticalBrush}" />
                                         <TextBlock
                                             x:Name="LiveStateText"
                                             FontSize="12"
-                                            Foreground="#FFF0483E"
+                                            FontWeight="SemiBold"
+                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                                             Text="直播中" />
                                     </StackPanel>
                                 </Border>
                                 <Border
-                                    Padding="10,4"
-                                    Background="{StaticResource ControlFillColorSecondaryBrush}"
+                                    Padding="10,5"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
                                     CornerRadius="12">
                                     <TextBlock
                                         x:Name="OnlineText"
@@ -141,217 +178,129 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- 解码 / 拉流方式 -->
+                        <!-- 房间详细数据：宽列里横排成两列，窄了就自然换行 -->
                         <Border
-                            Background="{StaticResource ControlFillColorSecondaryBrush}"
-                            CornerRadius="8"
-                            Padding="14">
-                            <Grid ColumnSpacing="12">
+                            Padding="14"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource RadiusCard}">
+                            <Grid ColumnSpacing="24" RowSpacing="10">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
                                 <StackPanel Spacing="3">
-                                    <TextBlock x:Name="CategoryText" FontSize="12" Text="分区 --" />
-                                    <TextBlock
-                                        x:Name="DecoderText"
-                                        FontSize="11"
-                                        Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                        Text="FFmpegInteropX · FLV" />
-                                </StackPanel>
-                                <TextBlock
-                                    x:Name="StreamNameText"
-                                    Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    FontSize="11"
-                                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                    MaxWidth="260"
-                                    Text="--"
-                                    TextTrimming="CharacterEllipsis" />
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-
-                <!-- ══════════════ 右：直播信息 / 清晰度·线路 / 弹幕 ══════════════ -->
-                <Border
-                    x:Name="SidePanel"
-                    Grid.Column="1"
-                    Padding="12"
-                    Background="{StaticResource ControlFillColorSecondaryBrush}"
-                    CornerRadius="8"
-                    VerticalAlignment="Top">
-                    <Grid RowSpacing="10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <Grid Grid.Row="0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                x:Name="ListTitle"
-                                Style="{StaticResource BodyStrongTextBlockStyle}"
-                                Text="直播信息" />
-                            <TextBlock
-                                x:Name="ListCountText"
-                                Grid.Column="1"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Foreground="{StaticResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-
-                        <!-- 分页切换 -->
-                        <Grid Grid.Row="1" ColumnSpacing="6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <ToggleButton
-                                x:Name="InfoTab"
-                                Grid.Column="0"
-                                Padding="0,6"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                Click="SideTab_Click"
-                                Content="直播信息"
-                                CornerRadius="6"
-                                FontSize="12"
-                                IsChecked="True" />
-                            <ToggleButton
-                                x:Name="LineTab"
-                                Grid.Column="1"
-                                Padding="0,6"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                Click="SideTab_Click"
-                                Content="线路"
-                                CornerRadius="6"
-                                FontSize="12" />
-                            <ToggleButton
-                                x:Name="DanmakuTab"
-                                Grid.Column="2"
-                                Padding="0,6"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Center"
-                                Click="SideTab_Click"
-                                Content="弹幕"
-                                CornerRadius="6"
-                                FontSize="12" />
-                        </Grid>
-
-                        <!-- 内容区：三个面板叠放，按 tab 显示其一 -->
-                        <Grid Grid.Row="2" MinHeight="360">
-
-                            <!-- 直播信息 -->
-                            <StackPanel x:Name="InfoPanelContent" Spacing="14">
-
-                                <!-- 主播卡片 -->
-                                <Border
-                                    Background="{StaticResource ControlFillColorDefaultBrush}"
-                                    CornerRadius="8"
-                                    Padding="12">
-                                    <Grid ColumnSpacing="10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <PersonPicture
-                                            x:Name="SideAvatar"
-                                            Width="38"
-                                            Height="38"
-                                            VerticalAlignment="Center" />
-                                        <StackPanel
-                                            Grid.Column="1"
-                                            VerticalAlignment="Center"
-                                            Spacing="2">
-                                            <TextBlock x:Name="SideAuthorText" Style="{StaticResource BodyStrongTextBlockStyle}" Text="主播" />
-                                            <TextBlock
-                                                x:Name="SideUidText"
-                                                FontSize="11"
-                                                Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                                Text="UID --" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <StackPanel Spacing="6">
-                                    <TextBlock Style="{StaticResource SideKeyTextStyle}" Text="在线人数" />
-                                    <TextBlock x:Name="SideOnlineText" Style="{StaticResource SideValueTextStyle}" Text="--" />
-                                </StackPanel>
-
-                                <StackPanel Spacing="6">
                                     <TextBlock Style="{StaticResource SideKeyTextStyle}" Text="分区" />
-                                    <TextBlock x:Name="SideCategoryText" Style="{StaticResource SideValueTextStyle}" Text="--" />
+                                    <TextBlock x:Name="CategoryText" Style="{StaticResource SideValueTextStyle}" Text="--" />
                                 </StackPanel>
 
-                                <StackPanel Spacing="6">
+                                <StackPanel Grid.Column="1" Spacing="3">
                                     <TextBlock Style="{StaticResource SideKeyTextStyle}" Text="直播 ID" />
                                     <TextBlock x:Name="LiveIdText" Style="{StaticResource SideValueTextStyle}" Text="--" />
                                 </StackPanel>
 
-                                <StackPanel Spacing="6">
+                                <StackPanel Grid.Row="1" Spacing="3">
                                     <TextBlock Style="{StaticResource SideKeyTextStyle}" Text="流名称" />
-                                    <TextBlock x:Name="SideStreamText" Style="{StaticResource SideValueTextStyle}" Text="--" />
+                                    <TextBlock x:Name="StreamNameText" Style="{StaticResource SideValueTextStyle}" Text="--" />
                                 </StackPanel>
 
-                                <Rectangle Height="1" Fill="{StaticResource ControlStrokeColorDefaultBrush}" />
+                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="3">
+                                    <TextBlock Style="{StaticResource SideKeyTextStyle}" Text="解码" />
+                                    <TextBlock x:Name="DecoderText" Style="{StaticResource SideValueTextStyle}" Text="FFmpegInteropX · FLV" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
 
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                    Text="拉流：访客令牌 → getPlayUrls → FLV 直播流，经 FFmpegInteropX 解码后交给系统播放器。"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="拉流：访客令牌 → getPlayUrls → FLV 直播流，经 FFmpegInteropX 解码后交给系统播放器。切换码率会重新拉流。"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
 
-                            <!-- 清晰度 / 线路 -->
-                            <StackPanel x:Name="LinePanelContent" Spacing="10" Visibility="Collapsed">
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                    Text="同一个直播流的码率档位，切换后重新拉流。卡顿时优先选低码率。"
-                                    TextWrapping="Wrap" />
+                </Grid>
+            </ScrollViewer>
+            <!-- ═══════════ 右列：线路 / 弹幕 ═══════════ -->
+            <Border
+                x:Name="SidePanel"
+                Grid.Row="0"
+                Grid.RowSpan="2"
+                Grid.Column="1"
+                Padding="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusCard}">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ToggleButton
+                            x:Name="LineTab"
+                            AutomationProperties.Name="线路"
+                            Click="SideTab_Click"
+                            Content="清晰度"
+                            IsChecked="True"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                        <ToggleButton
+                            x:Name="DanmakuTab"
+                            Grid.Column="1"
+                            AutomationProperties.Name="弹幕"
+                            Click="SideTab_Click"
+                            Content="弹幕"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                        <TextBlock
+                            x:Name="ListCountText"
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource MetaTextStyle}" />
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <!-- 码率档位 -->
+                        <StackPanel x:Name="LinePanelContent" Spacing="8">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="同一路直播的码率档位，切换后重新拉流。卡顿时优先选低码率。"
+                                TextWrapping="Wrap" />
+                            <Grid>
                                 <ListView
                                     x:Name="QualityList"
-                                    MaxHeight="420"
-                                    SelectionMode="Single" />
-                            </StackPanel>
+                                    SelectionMode="Single"
+                                    ItemContainerStyle="{StaticResource ListViewItemFlushStyle}" />
+                                <controls:StatePanel
+                                    x:Name="LineState"
+                                    ActionClick="LineState_ActionClick" />
+                            </Grid>
+                        </StackPanel>
 
-                            <!-- 弹幕 -->
-                            <StackPanel x:Name="DanmakuPanelContent" Spacing="10" Visibility="Collapsed">
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                    Text="直播弹幕层与开关已经就位，但数据通道（快手 zt.live 的 protobuf 长连接）尚未接入，当前不会显示弹幕。"
-                                    TextWrapping="Wrap" />
-                                <Rectangle Height="1" Fill="{StaticResource ControlStrokeColorDefaultBrush}" />
-                                <TextBlock
-                                    FontSize="11"
-                                    Foreground="{StaticResource TextFillColorTertiaryBrush}"
-                                    Text="接入后可直接复用播放器内的弹幕层，无需改动布局。"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-
-                            <!-- 空状态 / 提示 -->
-                            <TextBlock
-                                x:Name="SideEmptyHint"
-                                Margin="0,24,0,0"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Top"
-                                Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                TextAlignment="Center"
-                                TextWrapping="Wrap"
-                                Visibility="Collapsed" />
-                        </Grid>
+                        <!-- 弹幕：通道未接入，用统一状态面板说明 -->
+                        <StackPanel
+                            x:Name="DanmakuPanelContent"
+                            Spacing="8"
+                            Visibility="Collapsed">
+                            <controls:StatePanel x:Name="DanmakuState" />
+                        </StackPanel>
                     </Grid>
-                </Border>
-            </Grid>
-        </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

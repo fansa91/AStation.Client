@@ -74,11 +74,11 @@ public sealed partial class VideoPage : Page
     /// <summary>分P/选集区的空状态文案（列表为空时显示）</summary>
     private string? _playlistHint;
 
-    /// <summary>分P/选集分页的标题（切到评论/相关后切回来要还原）</summary>
+    /// <summary>分P/选集分页的标题（切到相关后切回来要还原）</summary>
     private string _playlistTitle = "分P";
 
-    /// <summary>进入全屏前的页面背景（退出时要还原）</summary>
-    private Brush? _savedPageBackground;
+    /// <summary>简介是否已展开（超过两行时才显示切换按钮）</summary>
+    private bool _descriptionExpanded;
 
     /// <summary>番剧元信息的固定部分（不含「当前第N集」）</summary>
     private List<string> _bangumiMetaBase = new();
@@ -111,8 +111,122 @@ public sealed partial class VideoPage : Page
         CommentList.ItemsSource = Comments;
         RelatedList.ItemsSource = RelatedVideos;
 
-        // 记住页面背景，全屏时会临时改成纯黑（防止漏出浅色边），退出时还原
-        _savedPageBackground = PageRoot.Background;
+        // 两列布局按宽度切换：宽屏并排、窄屏堆叠；同时给播放器算一个高度上限
+        SizeChanged += (_, e) => ApplyResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
+        Loaded += (_, _) => ApplyResponsiveLayout(ActualWidth, ActualHeight);
+    }
+
+    // ───────────────────────────── 响应式 ─────────────────────────────
+
+    /// <summary>低于这个宽度，右侧「选集 / 相关」折到内容下方，页面整体滚动</summary>
+    private const double BreakpointStack = 1040;
+
+    /// <summary>宽屏时侧栏加到 380，一屏能多放几条</summary>
+    private const double BreakpointSideWide = 1280;
+
+    private bool _stacked;
+
+    private static Thickness PagePaddingFor(double width)
+        => width < 900 ? new Thickness(16, 16, 16, 20) : new Thickness(24, 20, 24, 24);
+
+    /// <summary>
+    /// 播放页三态：
+    ///   宽（≥1280）  播放器 + 下方评论（左列）/ 选集·相关 380 侧栏（右列，贯通播放器与评论）
+    ///   中（1040+）  同上，侧栏 340
+    ///   窄（<1040）  侧栏折到内容最下方，页面整体滚动，列表给固定高度
+    /// 全屏由 <see cref="Overlay_FullscreenChanged"/> 单独处理。
+    /// </summary>
+    private void ApplyResponsiveLayout(double width, double height)
+    {
+        if (width <= 0 || height <= 0) return;
+        if (Overlay.IsFullscreen)
+        {
+            Overlay.MaxWindowedHeight = 0;
+            Overlay.MaxWidth = double.PositiveInfinity;
+            Overlay.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
+        }
+
+        LayoutGrid.Padding = PagePaddingFor(width);
+
+        bool stacked = width < BreakpointStack;
+        _stacked = stacked;
+
+        if (stacked)
+        {
+            SideColumn.Width = new GridLength(0);
+            HostSidePanel(stacked: true);
+
+            BodyScroll.VerticalScrollMode = ScrollMode.Enabled;
+            BodyScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+
+            BodyGrid.RowDefinitions[0].Height = GridLength.Auto;
+            StackedRow.Height = GridLength.Auto;
+
+            Grid.SetRowSpan(MainColumn, 1);
+            SidePanel.Height = 340;
+
+            // 页面整体滚动时，评论列表自己给个高度，避免 50 条评论把页面拉到很长
+            CommentList.MaxHeight = 420;
+        }
+        else
+        {
+            SideColumn.Width = new GridLength(width >= BreakpointSideWide ? 380 : 340);
+            HostSidePanel(stacked: false);
+
+            BodyScroll.VerticalScrollMode = ScrollMode.Disabled;
+            BodyScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+
+            BodyGrid.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
+            StackedRow.Height = new GridLength(0);
+
+            Grid.SetRowSpan(MainColumn, 1);
+            SidePanel.Height = double.NaN;
+
+            CommentList.MaxHeight = double.PositiveInfinity;
+        }
+
+        // 播放器尺寸：宽度由左列决定，正常情况下就是 16:9，这里只是「超宽矮窗口」的安全阀 ——
+        // 高度超了就按比例收窄宽度并居中（硬压高度会让画面左右长黑边）。
+        // 堆叠模式下方内容本来就能滚，所以上限放宽，优先保画面大小。
+        var padding = PagePaddingFor(width);
+        double available = height - padding.Top - padding.Bottom - 12;
+        double maxPlayerHeight = Math.Max(180, Math.Round(available * (stacked ? 0.82 : 0.68)));
+        Overlay.MaxWindowedHeight = maxPlayerHeight;
+        Overlay.MaxWidth = Math.Round(maxPlayerHeight * Overlay.AspectRatio);
+        Overlay.HorizontalAlignment = HorizontalAlignment.Center;
+    }
+
+    /// <summary>
+    /// 侧栏的宿主切换：
+    ///   宽屏 → 挂在 LayoutGrid 第 1 列、跨播放器行与内容行（与播放器等高的整条侧栏）
+    ///   窄屏 → 挂到 BodyGrid 第 1 行（评论下方），跟着页面一起滚
+    /// Grid 子元素不能在两处同时存在，所以这里是搬移而不是隐藏。
+    /// </summary>
+    private void HostSidePanel(bool stacked)
+    {
+        if (stacked)
+        {
+            if (ReferenceEquals(SidePanel.Parent, BodyGrid)) return;
+
+            LayoutGrid.Children.Remove(SidePanel);
+            Grid.SetColumn(SidePanel, 0);
+            Grid.SetRow(SidePanel, 1);
+            Grid.SetColumnSpan(SidePanel, 1);
+            Grid.SetRowSpan(SidePanel, 1);
+            BodyGrid.Children.Add(SidePanel);
+        }
+        else
+        {
+            if (ReferenceEquals(SidePanel.Parent, LayoutGrid)) return;
+
+            BodyGrid.Children.Remove(SidePanel);
+            Grid.SetColumn(SidePanel, 1);
+            Grid.SetRow(SidePanel, 0);
+            Grid.SetColumnSpan(SidePanel, 1);
+            Grid.SetRowSpan(SidePanel, 2);
+            LayoutGrid.Children.Add(SidePanel);
+        }
     }
 
     // ───────────────────────────── 播放器挂载 ─────────────────────────────
@@ -193,6 +307,8 @@ public sealed partial class VideoPage : Page
         Comments.Clear();
         RelatedVideos.Clear();
         LoadMoreCommentButton.Visibility = Visibility.Collapsed;
+        CommentCountText.Text = string.Empty;
+        CommentState.ShowLoading("正在加载评论…");
 
         Playlist.Clear();
         _playlistHint = null;
@@ -237,12 +353,13 @@ public sealed partial class VideoPage : Page
             MetaText.Text = "未能读取到视频详情（接口可能调整）";
             _playlistHint = "没有分P信息";
             _playlistTitle = "分P";
-            ListTitle.Text = _playlistTitle;
+            PlaylistTab.Content = _playlistTitle;
             return;
         }
 
         TitleText.Text = string.IsNullOrWhiteSpace(title) ? detail.Title : title!;
         DescriptionText.Text = string.IsNullOrWhiteSpace(detail.Description) ? "暂无简介" : detail.Description;
+        UpdateDescriptionToggle();
         AuthorText.Text = string.IsNullOrWhiteSpace(detail.AuthorName) ? "未知 UP 主" : detail.AuthorName;
 
         var meta = new List<string>();
@@ -266,7 +383,7 @@ public sealed partial class VideoPage : Page
 
         // 分P 列表
         _playlistTitle = detail.Parts.Count > 1 ? $"分P（共 {detail.Parts.Count} 个）" : "分P";
-        ListTitle.Text = _playlistTitle;
+        PlaylistTab.Content = "分P";
         ListCountText.Text = detail.Parts.Count.ToString();
 
         for (int i = 0; i < detail.Parts.Count; i++)
@@ -311,12 +428,13 @@ public sealed partial class VideoPage : Page
             MetaText.Text = "未能读取到番剧详情（接口可能调整）";
             _playlistHint = "没有剧集信息";
             _playlistTitle = "选集";
-            ListTitle.Text = _playlistTitle;
+            PlaylistTab.Content = _playlistTitle;
             return;
         }
 
         TitleText.Text = string.IsNullOrWhiteSpace(title) ? detail.Title : title!;
         DescriptionText.Text = string.IsNullOrWhiteSpace(detail.Introduction) ? "暂无简介" : detail.Introduction;
+        UpdateDescriptionToggle();
         AuthorText.Text = string.IsNullOrWhiteSpace(detail.UpdateStatus) ? detail.Title : $"{detail.Title} · {detail.UpdateStatus}";
 
         var meta = new List<string> { $"共 {detail.ItemCount} 话" };
@@ -340,7 +458,7 @@ public sealed partial class VideoPage : Page
         _mkey = string.IsNullOrWhiteSpace(_mkey) ? detail.Mkey : _mkey;
 
         _playlistTitle = "选集";
-        ListTitle.Text = _playlistTitle;
+        PlaylistTab.Content = _playlistTitle;
         ListCountText.Text = detail.Episodes.Count.ToString();
 
         for (int i = 0; i < detail.Episodes.Count; i++)
@@ -601,36 +719,95 @@ public sealed partial class VideoPage : Page
     }
 
     /// <summary>
-    /// 全屏时把播放器之外的周边全部收起来，让画面真正铺满：
-    /// 右栏宽度归 0（ColumnSpacing 也要清零，否则会留 18px 白边）、信息区隐藏、页面背景转黑。
+    /// 全屏四态里的 Fullscreen：内容行高度归零、内边距清零、兜底底色显示。
+    /// 退出时按当前窗口宽度重算，不还原写死的旧数值。
     /// </summary>
     private void Overlay_FullscreenChanged(object? sender, bool fullscreen)
     {
         if (fullscreen)
         {
             LayoutGrid.Padding = new Thickness(0);
+            LayoutGrid.RowSpacing = 0;
             LayoutGrid.ColumnSpacing = 0;
+            // 右列整条让出去，播放器才能独占整个窗口
             SideColumn.Width = new GridLength(0);
             SidePanel.Visibility = Visibility.Collapsed;
-            InfoPanel.Visibility = Visibility.Collapsed;
-            RootScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-            RootScroll.VerticalScrollMode = ScrollMode.Disabled;
-
-            // 兜底：万一路由区还有几个像素的残余，看到的也应该是黑色留边而不是浅色白边
-            PageRoot.Background = new SolidColorBrush(Microsoft.UI.Colors.Black);
+            // 窗口模式给播放器设过 MaxWidth（居中收窄），全屏必须还原成铺满
+            Overlay.MaxWidth = double.PositiveInfinity;
+            Overlay.HorizontalAlignment = HorizontalAlignment.Stretch;
+            PlayerRow.Height = new GridLength(1, GridUnitType.Star);
+            ContentRow.Height = new GridLength(0);
+            BodyScroll.Visibility = Visibility.Collapsed;
+            FullscreenBackdrop.Visibility = Visibility.Visible;
         }
         else
         {
-            LayoutGrid.Padding = new Thickness(20, 4, 20, 24);
+            LayoutGrid.RowSpacing = 12;
             LayoutGrid.ColumnSpacing = 18;
-            SideColumn.Width = new GridLength(340);
             SidePanel.Visibility = Visibility.Visible;
-            InfoPanel.Visibility = Visibility.Visible;
-            RootScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
-            RootScroll.VerticalScrollMode = ScrollMode.Enabled;
+            PlayerRow.Height = GridLength.Auto;
+            ContentRow.Height = new GridLength(1, GridUnitType.Star);
+            BodyScroll.Visibility = Visibility.Visible;
+            FullscreenBackdrop.Visibility = Visibility.Collapsed;
 
-            PageRoot.Background = _savedPageBackground ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            ApplyResponsiveLayout(ActualWidth, ActualHeight);
         }
+    }
+
+    // ───────────────────────────── 信息区交互 ─────────────────────────────
+
+    /// <summary>简介超过两行才给「展开简介」按钮，展开高度变化只影响左列内部</summary>
+    private void UpdateDescriptionToggle()
+    {
+        _descriptionExpanded = false;
+        DescriptionText.MaxLines = 2;
+        DescriptionToggle.Content = "展开简介";
+
+        bool longText = (DescriptionText.Text?.Length ?? 0) > 90;
+        DescriptionToggle.Visibility = longText ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void DescriptionToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _descriptionExpanded = !_descriptionExpanded;
+        DescriptionText.MaxLines = _descriptionExpanded ? 0 : 2;
+        DescriptionToggle.Content = _descriptionExpanded ? "收起简介" : "展开简介";
+    }
+
+    /// <summary>
+    /// 点赞 / 收藏：AcFun 的写接口需要登录态，当前版本只读。
+    /// 做成真正的按钮（可聚焦、有悬停反馈），点击时明确说明而不是装死。
+    /// </summary>
+    private void LikeButton_Click(object sender, RoutedEventArgs e)
+        => ShowUnavailableFlyout((FrameworkElement)sender, "点赞", "点赞需要登录态的写接口，当前版本尚未接入。");
+
+    private void FavoriteButton_Click(object sender, RoutedEventArgs e)
+        => ShowUnavailableFlyout((FrameworkElement)sender, "收藏", "收藏需要登录态的写接口，当前版本尚未接入。");
+
+    private static void ShowUnavailableFlyout(FrameworkElement target, string title, string message)
+    {
+        var flyout = new Flyout
+        {
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom,
+            Content = new StackPanel
+            {
+                Spacing = 4,
+                MaxWidth = 260,
+                Children =
+                {
+                    new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold },
+                    new TextBlock
+                    {
+                        Text = message,
+                        TextWrapping = TextWrapping.Wrap,
+                        FontSize = 12,
+                        Opacity = 0.75
+                    }
+                }
+            }
+        };
+
+        flyout.ShowAt(target);
     }
 
     private void GoBack()
@@ -738,75 +915,59 @@ public sealed partial class VideoPage : Page
         Overlay.Danmaku.ClearAll();
     }
 
-    // ───────────────────────────── 右栏切换 ─────────────────────────────
+    // ───────────────────────────── 右栏切换（选集 / 相关） ─────────────────────────────
 
     private void SideTab_Click(object sender, RoutedEventArgs e)
     {
-        int index = ReferenceEquals(sender, CommentTab) ? 1
-            : ReferenceEquals(sender, RelatedTab) ? 2
-            : 0;
-
-        SelectSideTab(index);
-
-        // 评论首次点开时才拉（进页面时已后台拉过一次，这里只兜底重试）
-        if (index == 1 && !_commentsLoaded) _ = LoadCommentsAsync(append: false);
+        SelectSideTab(ReferenceEquals(sender, RelatedTab) ? 1 : 0);
     }
 
     private void SelectSideTab(int index)
     {
         PlaylistTab.IsChecked = index == 0;
-        CommentTab.IsChecked = index == 1;
-        RelatedTab.IsChecked = index == 2;
+        RelatedTab.IsChecked = index == 1;
 
         EpisodeList.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
-        CommentList.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
-        RelatedList.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
-
-        LoadMoreCommentButton.Visibility = index == 1 && Comments.Count > 0 && _commentPage < _commentTotalPage
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
-        // 标题跟着分页走，否则会出现「分P 16」这种评论数挂在分P标题上的错位
-        ListTitle.Text = index switch
-        {
-            1 => "评论",
-            2 => "相关视频",
-            _ => _playlistTitle
-        };
+        RelatedList.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
 
         ListCountText.Text = index switch
         {
-            1 => _commentTotalCount > 0 ? VideoDetailService.FormatCount(_commentTotalCount) : Comments.Count.ToString(),
-            2 => RelatedVideos.Count > 0 ? RelatedVideos.Count.ToString() : string.Empty,
+            1 => RelatedVideos.Count > 0 ? RelatedVideos.Count.ToString() : string.Empty,
             _ => Playlist.Count.ToString()
         };
 
         UpdateSideHint(index);
     }
 
+    /// <summary>侧栏空态统一走 StatePanel（叠在列表上，不占布局）</summary>
     private void UpdateSideHint(int index)
     {
-        string? hint = null;
-
         if (index == 0)
         {
-            if (Playlist.Count == 0) hint = _playlistHint ?? (_isBangumi ? "没有取到剧集清单" : "该视频没有分P信息");
-        }
-        else if (index == 1)
-        {
-            if (!_commentsLoaded) hint = "正在加载评论…";
-            else if (Comments.Count == 0) hint = "暂无评论";
+            if (Playlist.Count > 0)
+            {
+                SideState.Hide();
+                return;
+            }
+
+            SideState.ShowEmpty(
+                _isBangumi ? "没有取到剧集清单" : "该视频没有分P信息",
+                _playlistHint,
+                glyph: "\uE7BA");
         }
         else
         {
-            if (RelatedVideos.Count == 0)
+            if (RelatedVideos.Count > 0)
             {
-                hint = _isBangumi ? "番剧暂不支持相关推荐" : "暂无相关视频";
+                SideState.Hide();
+                return;
             }
-        }
 
-        SideEmptyHint.Text = hint ?? string.Empty;
-        SideEmptyHint.Visibility = hint is null ? Visibility.Collapsed : Visibility.Visible;
+            SideState.ShowEmpty(
+                _isBangumi ? "番剧暂无相关推荐" : "暂无相关视频",
+                _isBangumi ? "番剧接口不返回同频道内容流。" : null,
+                glyph: "\uE71E");
+        }
     }
 
     // ───────────────────────────── 评论 ─────────────────────────────
@@ -815,6 +976,14 @@ public sealed partial class VideoPage : Page
     {
         // 番剧的评论 sourceType 与视频不同，实测传 2 拿不到就退回 3 再试
         int sourceType = _isBangumi ? 2 : 3;
+
+        if (!append)
+        {
+            CommentState.ShowLoading("正在加载评论…");
+        }
+
+        CommentLoadingRing.IsActive = true;
+        CommentLoadingRing.Visibility = Visibility.Visible;
 
         int page = append ? _commentPage + 1 : 1;
         var result = await _comment.GetCommentsAsync(_resourceId, sourceType, page);
@@ -834,13 +1003,54 @@ public sealed partial class VideoPage : Page
         _commentTotalPage = result.TotalPage;
         _commentTotalCount = result.TotalCount;
 
+        CommentLoadingRing.IsActive = false;
+        CommentLoadingRing.Visibility = Visibility.Collapsed;
+
         if (result.ErrorMessage is not null && Comments.Count == 0)
         {
-            SideEmptyHint.Text = result.ErrorMessage;
-            SideEmptyHint.Visibility = Visibility.Visible;
+            CommentState.ShowError("评论加载失败", result.ErrorMessage, "重试");
+        }
+        else
+        {
+            UpdateCommentState();
         }
 
-        if (CommentTab.IsChecked == true) SelectSideTab(1);
+        UpdateLoadMoreButton();
+    }
+
+    /// <summary>评论区三态：加载中 / 空 / 有内容</summary>
+    private void UpdateCommentState()
+    {
+        CommentCountText.Text = _commentTotalCount > 0
+            ? $"共 {VideoDetailService.FormatCount(_commentTotalCount)} 条"
+            : (Comments.Count > 0 ? $"{Comments.Count} 条" : string.Empty);
+
+        if (!_commentsLoaded)
+        {
+            CommentState.ShowLoading("正在加载评论…");
+            return;
+        }
+
+        if (Comments.Count == 0)
+        {
+            CommentState.ShowEmpty("暂无评论", "还没有人发言", glyph: "\uE90A");
+            return;
+        }
+
+        CommentState.Hide();
+    }
+
+    private async void CommentState_ActionClick(object sender, EventArgs e)
+    {
+        await LoadCommentsAsync(append: false);
+    }
+
+    private void UpdateLoadMoreButton()
+    {
+        LoadMoreCommentButton.Visibility =
+            _commentsLoaded && Comments.Count > 0 && _commentPage < _commentTotalPage
+                ? Visibility.Visible
+                : Visibility.Collapsed;
     }
 
     private async void LoadMoreCommentButton_Click(object sender, RoutedEventArgs e)
@@ -864,7 +1074,7 @@ public sealed partial class VideoPage : Page
     {
         if (_isBangumi || string.IsNullOrWhiteSpace(_channelId))
         {
-            if (RelatedTab.IsChecked == true) SelectSideTab(2);
+            if (RelatedTab.IsChecked == true) SelectSideTab(1);
             return;
         }
 
@@ -873,7 +1083,7 @@ public sealed partial class VideoPage : Page
         RelatedVideos.Clear();
         foreach (var item in list) RelatedVideos.Add(item);
 
-        if (RelatedTab.IsChecked == true) SelectSideTab(2);
+        if (RelatedTab.IsChecked == true) SelectSideTab(1);
     }
 
     private async void RelatedList_ItemClick(object sender, ItemClickEventArgs e)
@@ -883,7 +1093,7 @@ public sealed partial class VideoPage : Page
 
         // 同页内切换，不新建页面实例
         await LoadAsync(item.DougaId, 2, null, null, null);
-        RootScroll.ChangeView(null, 0, null);
+        BodyScroll.ChangeView(null, 0, null);
     }
 
     private async void EpisodeList_ItemClick(object sender, ItemClickEventArgs e)

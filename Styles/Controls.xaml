@@ -110,6 +110,16 @@
         <Setter Property="UseSystemFocusVisuals" Value="False" />
     </Style>
 
+    <!-- ── 导航 ── -->
+    <Style x:Key="NavigationViewStyle" TargetType="NavigationView">
+        <Setter Property="CompactPaneLength" Value="48" />
+        <Setter Property="OpenPaneLength" Value="240" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="IsPaneToggleButtonVisible" Value="False" />
+        <Setter Property="IsBackButtonVisible" Value="Collapsed" />
+        <Setter Property="IsSettingsVisible" Value="False" />
+    </Style>
+
     <!-- ── 分段控件（播放页右栏分页） ── -->
     <Style x:Key="SegmentTabButtonStyle" TargetType="ToggleButton">
         <Setter Property="Background" Value="Transparent" />

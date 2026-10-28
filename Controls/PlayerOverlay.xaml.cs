@@ -119,6 +119,23 @@ public sealed partial class PlayerOverlay : UserControl
 
     public bool DanmakuEnabled => _danmakuEnabled;
 
+    /// <summary>
+    /// 窗口模式下播放器高度的上限（像素）。页面保证「播放器 + 下方内容」同屏放得下：
+    /// 播放器再高就会把信息区和评论挤没。0 表示不限制。
+    /// </summary>
+    public double MaxWindowedHeight
+    {
+        get => _maxWindowedHeight;
+        set
+        {
+            if (Math.Abs(_maxWindowedHeight - value) < 1) return;
+            _maxWindowedHeight = value;
+            UpdatePlayerHeight();
+        }
+    }
+
+    private double _maxWindowedHeight;
+
     /// <summary>点播放器左上角的返回</summary>
     public event EventHandler? BackRequested;
 
@@ -434,6 +451,12 @@ public sealed partial class PlayerOverlay : UserControl
 
         double target = Math.Round(width / _aspectRatio);
         if (target < 1) return;
+
+        // 窗口模式还要照顾下方内容：播放器太高会把信息区和评论区挤没
+        if (_maxWindowedHeight > 0 && target > _maxWindowedHeight)
+        {
+            target = Math.Round(_maxWindowedHeight);
+        }
 
         // Height 初始是 NaN（Auto），NaN 参与比较永远为 false —— 必须先单独判掉，
         // 否则换清晰度后内容塌陷就再也修正不回来
