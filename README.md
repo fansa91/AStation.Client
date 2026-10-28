@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/screenshots/logo.png" width="112" alt="AStation" /></p>
+
 # AStation.Client
 
 AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直跑（不需要 MSIX 安装）。
@@ -121,7 +123,7 @@ git push origin v0.1.0
 ├── AStation.Client.Core/     纯 .NET 服务与模型，可单测
 ├── AStation.Client.Tests/    xUnit 测试，只引用 Core
 ├── docs/screenshots/         README 截图
-├── tools/                    本地 UI 自动化验证脚本
+├── tools/                    本地 UI 自动化验证脚本、图标生成脚本（make-icon.py）
 └── .github/workflows/        Release 构建与发布
 ```
 

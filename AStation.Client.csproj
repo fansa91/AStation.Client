@@ -51,6 +51,8 @@
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\AppIcon.ico" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <!-- 1024 母版只留在仓库里做设计源文件，不随包分发 -->
+    <Content Remove="Assets\AppIcon-1024.png" />
   </ItemGroup>
 
   <ItemGroup>
