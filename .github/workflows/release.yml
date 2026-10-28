@@ -101,8 +101,16 @@ jobs:
             -p:DebugSymbols=false `
             -o $outDir
           if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（exit $LASTEXITCODE）" }
-          if (-not (Test-Path (Join-Path $outDir "$env:APP_NAME.exe"))) {
-            throw "发布目录里没有 $env:APP_NAME.exe"
+
+          # 发布目录必须自带这三样，少任何一个发出去的包都会出问题：
+          #   exe                        —— 显然
+          #   <AssemblyName>.pri         —— XAML 资源索引；dotnet publish 默认不带，
+          #                                 缺了会让 unpackaged 应用启动即崩（0xc000027b / E_FAIL）
+          #   Assets\AppIcon.ico         —— 运行时按相对路径加载，缺了窗口图标会丢
+          foreach ($required in @("$env:APP_NAME.exe", "$env:APP_NAME.pri", "Assets\AppIcon.ico")) {
+            if (-not (Test-Path (Join-Path $outDir $required))) {
+              throw "发布目录缺少 $required（发布产物不完整，中止）"
+            }
           }
           "out_dir=$outDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "产物：$outDir（$((Get-ChildItem $outDir -File).Count) 个文件，$([math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)) MB）"

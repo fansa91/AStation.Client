@@ -53,7 +53,22 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
     <!-- 1024 母版只留在仓库里做设计源文件，不随包分发 -->
     <Content Remove="Assets\AppIcon-1024.png" />
+    <!-- Content 默认只进 build 输出（CopyToOutputDirectory），不会进 publish 目录。
+         运行时要按相对路径读 Assets/AppIcon.ico（窗口图标、标题栏图标），
+         发布包漏掉这个目录会导致图标丢失，所以显式声明跟着发布走。 -->
+    <Content Update="Assets\*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Update="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    WinUI 3 的 XAML 资源索引 <AssemblyName>.pri 由 XAML 编译器生成在 build 输出目录，
+    但 dotnet publish 不会把它复制到发布目录。unpackaged 应用缺了它，
+    XAML 资源查找会在启动阶段失败，进程直接以 0xc000027b（E_FAIL）退出，连窗口都出不来。
+    实测：publish 出目录里只有 Microsoft.UI.Xaml 等框架自带的 .pri，没有本项目的那个。
+  -->
+  <Target Name="CopyProjectPriToPublishDir" AfterTargets="Publish" Condition="Exists('$(TargetDir)$(AssemblyName).pri')">
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pri" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+  </Target>
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
