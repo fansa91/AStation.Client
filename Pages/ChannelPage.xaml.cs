@@ -46,7 +46,8 @@ public sealed partial class ChannelPage : Page
                 Channels.Add(new ChannelItem
                 {
                     Name = nav.NavName,
-                    Tag = nav.Link ?? nav.Cid.ToString()
+                    Tag = nav.Link ?? nav.Cid.ToString(),
+                    Id = nav.Cid
                 });
             }
 
@@ -66,14 +67,23 @@ public sealed partial class ChannelPage : Page
     private void LoadDefaultChannels()
     {
         Channels.Clear();
-        Channels.Add(new ChannelItem { Name = "全部视频", Tag = "all" });
-        Channels.Add(new ChannelItem { Name = "游戏", Tag = "game" });
-        Channels.Add(new ChannelItem { Name = "舞蹈", Tag = "dance" });
-        Channels.Add(new ChannelItem { Name = "音乐", Tag = "music" });
-        Channels.Add(new ChannelItem { Name = "科技", Tag = "tech" });
-        Channels.Add(new ChannelItem { Name = "生活", Tag = "life" });
-        Channels.Add(new ChannelItem { Name = "影视", Tag = "film" });
-        Channels.Add(new ChannelItem { Name = "体育", Tag = "sport" });
-        Channels.Add(new ChannelItem { Name = "搞笑", Tag = "funny" });
+        Channels.Add(new ChannelItem { Name = "全部视频", Tag = "all", Id = 1 });
+        Channels.Add(new ChannelItem { Name = "游戏", Tag = "game", Id = 2 });
+        Channels.Add(new ChannelItem { Name = "舞蹈", Tag = "dance", Id = 3 });
+        Channels.Add(new ChannelItem { Name = "音乐", Tag = "music", Id = 4 });
+        Channels.Add(new ChannelItem { Name = "科技", Tag = "tech", Id = 5 });
+        Channels.Add(new ChannelItem { Name = "生活", Tag = "life", Id = 6 });
+        Channels.Add(new ChannelItem { Name = "影视", Tag = "film", Id = 7 });
+        Channels.Add(new ChannelItem { Name = "体育", Tag = "sport", Id = 8 });
+        Channels.Add(new ChannelItem { Name = "搞笑", Tag = "funny", Id = 9 });
+    }
+
+    /// <summary>分区卡片 → 该分区的排行榜（cid 与排行榜接口 channelId 同源）</summary>
+    private void ChannelCard_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (sender is Microsoft.UI.Xaml.Controls.Button { Tag: int channelId } && channelId > 0)
+        {
+            Frame.Navigate(typeof(RankPage), channelId);
+        }
     }
 }

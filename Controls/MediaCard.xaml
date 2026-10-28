@@ -1,0 +1,132 @@
+<UserControl
+    x:Class="AStation_Client.Controls.MediaCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    AutomationProperties.Name="{x:Bind Title, Mode=OneWay}">
+
+    <!--
+        统一媒体卡片：视频（16:9）/ 番剧（3:4）/ 直播（16:9 + LIVE）共用一套骨架。
+          Row0 封面（比例由 CoverAspect 决定，宽度跟随父容器拉伸）
+          Row1 标题（占满剩余的 * 高度，保证同一行卡片底部对齐）
+          Row2 副标题 + 播放量 / 主播
+        悬停只用「底色 + 1px 描边」两层，不缩放、不位移。
+    -->
+    <Grid
+        PointerEntered="Grid_PointerEntered"
+        PointerExited="Grid_PointerExited"
+        Tapped="Root_Tapped">
+        <!-- 悬停底：独立一层，主题资源自动跟随；不吃命中测试 -->
+        <Border
+            x:Name="HoverLayer"
+            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{StaticResource RadiusCard}"
+            IsHitTestVisible="False"
+            Opacity="0" />
+
+        <Grid
+            x:Name="ContentGrid"
+            Padding="8"
+            RowSpacing="8"
+            SizeChanged="ContentGrid_SizeChanged">
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="CoverRow" Height="112" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- 封面：Rectangle + ImageBrush 才能吃满圆角 -->
+            <Grid x:Name="CoverHost" Grid.Row="0">
+                <Rectangle RadiusX="6" RadiusY="6" Fill="{ThemeResource ControlFillColorSecondaryBrush}" />
+                <Rectangle RadiusX="6" RadiusY="6">
+                    <Rectangle.Fill>
+                        <ImageBrush
+                            x:Name="CoverBrush"
+                            ImageSource="{x:Bind Cover, Mode=OneWay, Converter={StaticResource StringToImageSourceConverter}}"
+                            Stretch="UniformToFill" />
+                    </Rectangle.Fill>
+                </Rectangle>
+
+                <!-- 直播角标（左上，强调色） -->
+                <Border
+                    x:Name="LiveBadgeBox"
+                    Margin="6"
+                    Padding="6,2"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource SystemFillColorCriticalBrush}"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        FontSize="10"
+                        FontWeight="SemiBold"
+                        Foreground="White"
+                        Text="LIVE" />
+                </Border>
+
+                <!-- 右上角标：时长 / 在线人数 -->
+                <Border
+                    x:Name="TopRightBadgeBox"
+                    Margin="6"
+                    Padding="5,2"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Background="#B3000000"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="TopRightBadgeText"
+                        FontSize="11"
+                        Foreground="White" />
+                </Border>
+
+                <!-- 左下角标：分区 / 集数 -->
+                <Border
+                    x:Name="BottomLeftBadgeBox"
+                    Margin="6"
+                    Padding="5,2"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Background="#B3000000"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                    <TextBlock
+                        x:Name="BottomLeftBadgeText"
+                        FontSize="11"
+                        Foreground="White" />
+                </Border>
+            </Grid>
+
+            <TextBlock
+                Grid.Row="1"
+                VerticalAlignment="Top"
+                MaxLines="2"
+                Style="{StaticResource CardTitleTextStyle}"
+                Text="{x:Bind Title, Mode=OneWay}"
+                TextTrimming="CharacterEllipsis"
+                TextWrapping="Wrap" />
+
+            <StackPanel
+                Grid.Row="2"
+                Orientation="Horizontal"
+                Spacing="6">
+                <TextBlock
+                    MaxLines="1"
+                    Style="{StaticResource MetaTextStyle}"
+                    Text="{x:Bind Subtitle, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    x:Name="MetaDot"
+                    Style="{StaticResource MetaTextStyle}"
+                    Text="·"
+                    Visibility="Collapsed" />
+                <TextBlock
+                    MaxLines="1"
+                    Style="{StaticResource MetaTextStyle}"
+                    Text="{x:Bind Meta, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

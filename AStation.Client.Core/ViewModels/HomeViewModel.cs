@@ -12,8 +12,46 @@ public class HomeViewModel : INotifyPropertyChanged
     private bool _isLoading;
     private string? _errorMessage;
 
+    /// <summary>「换一批」在三个周期之间轮转，拿到的是真正不同的一批数据，而不是本地打乱</summary>
+    private static readonly string[] RankPeriods = ["DAY", "THREE_DAYS", "WEEK"];
+    private int _periodIndex;
+
     public ObservableCollection<ChannelItem> Channels { get; } = new();
+
+    /// <summary>首页分区条只放前面几个，剩下的走「全部分区」</summary>
+    public ObservableCollection<ChannelItem> QuickChannels { get; } = new();
+
     public ObservableCollection<VideoItem> Videos { get; } = new();
+
+    private VideoItem? _heroMain;
+    private VideoItem? _heroSecond;
+    private VideoItem? _heroThird;
+    private VideoItem? _heroFourth;
+
+    /// <summary>Hero 主卡（榜一）</summary>
+    public VideoItem? HeroMain
+    {
+        get => _heroMain;
+        private set => SetProperty(ref _heroMain, value);
+    }
+
+    public VideoItem? HeroSecond
+    {
+        get => _heroSecond;
+        private set => SetProperty(ref _heroSecond, value);
+    }
+
+    public VideoItem? HeroThird
+    {
+        get => _heroThird;
+        private set => SetProperty(ref _heroThird, value);
+    }
+
+    public VideoItem? HeroFourth
+    {
+        get => _heroFourth;
+        private set => SetProperty(ref _heroFourth, value);
+    }
 
     public bool IsLoading
     {
@@ -81,7 +119,8 @@ public class HomeViewModel : INotifyPropertyChanged
             Channels.Add(new ChannelItem
             {
                 Name = nav.NavName,
-                Tag = nav.Link ?? nav.Cid.ToString()
+                Tag = nav.Link ?? nav.Cid.ToString(),
+                Id = nav.Cid
             });
         }
 
@@ -90,16 +129,28 @@ public class HomeViewModel : INotifyPropertyChanged
         {
             LoadDefaultChannels();
         }
+
+        RebuildQuickChannels();
     }
 
-    private async Task LoadRecommendVideosAsync()
+    /// <summary>分区条只放前 8 个，避免首页横向拉成一条长龙</summary>
+    private void RebuildQuickChannels()
+    {
+        QuickChannels.Clear();
+        foreach (var channel in Channels.Take(8))
+        {
+            QuickChannels.Add(channel);
+        }
+    }
+
+    private async Task LoadRecommendVideosAsync(string? period = null)
     {
         // 调用排行榜接口作为推荐视频源：GET /rest/pc-direct/rank/channel
-        // 参数：channelId 不传或为空，rankPeriod=DAY，rankLimit=20
+        // 参数：channelId 不传或为空，rankPeriod=DAY，rankLimit=28
         var query = new Dictionary<string, string>
         {
-            ["rankLimit"] = "20",
-            ["rankPeriod"] = "DAY"
+            ["rankLimit"] = "28",
+            ["rankPeriod"] = period ?? RankPeriods[_periodIndex]
         };
 
         var response = await _api.GetAsync<RankResponse>("/rest/pc-direct/rank/channel", query);
@@ -110,11 +161,11 @@ public class HomeViewModel : INotifyPropertyChanged
             return;
         }
 
-        Videos.Clear();
+        var items = new List<VideoItem>(response.RankList.Count);
         foreach (var item in response.RankList)
         {
             var contentId = item.ContentId ?? item.DougaId;
-            Videos.Add(new VideoItem
+            items.Add(new VideoItem
             {
                 Title = item.Title ?? "未知标题",
                 Author = item.UserName ?? item.UserId.ToString(),
@@ -125,9 +176,43 @@ public class HomeViewModel : INotifyPropertyChanged
             });
         }
 
-        if (Videos.Count == 0)
+        if (items.Count == 0)
         {
             LoadDefaultVideos();
+            return;
+        }
+
+        // 前 4 条进 Hero（1 大 3 小），其余进推荐网格 —— 两处不重复
+        HeroMain = items.ElementAtOrDefault(0);
+        HeroSecond = items.ElementAtOrDefault(1);
+        HeroThird = items.ElementAtOrDefault(2);
+        HeroFourth = items.ElementAtOrDefault(3);
+
+        Videos.Clear();
+        foreach (var item in items.Skip(4))
+        {
+            Videos.Add(item);
+        }
+    }
+
+    /// <summary>换一批：轮转到下一个周期，Hero 与推荐网格一起换</summary>
+    public async Task RefreshRecommendAsync()
+    {
+        _periodIndex = (_periodIndex + 1) % RankPeriods.Length;
+
+        IsLoading = true;
+        ErrorMessage = null;
+        try
+        {
+            await LoadRecommendVideosAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"加载失败：{ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
         }
     }
 
@@ -154,19 +239,32 @@ public class HomeViewModel : INotifyPropertyChanged
     private void LoadDefaultChannels()
     {
         Channels.Clear();
-        Channels.Add(new ChannelItem { Name = "综合", Tag = "home" });
-        Channels.Add(new ChannelItem { Name = "游戏", Tag = "game" });
-        Channels.Add(new ChannelItem { Name = "舞蹈", Tag = "dance" });
-        Channels.Add(new ChannelItem { Name = "音乐", Tag = "music" });
-        Channels.Add(new ChannelItem { Name = "科技", Tag = "tech" });
-        Channels.Add(new ChannelItem { Name = "生活", Tag = "life" });
-        Channels.Add(new ChannelItem { Name = "影视", Tag = "film" });
-        Channels.Add(new ChannelItem { Name = "体育", Tag = "sport" });
+        Channels.Add(new ChannelItem { Name = "综合", Tag = "home", Id = 1 });
+        Channels.Add(new ChannelItem { Name = "游戏", Tag = "game", Id = 2 });
+        Channels.Add(new ChannelItem { Name = "舞蹈", Tag = "dance", Id = 3 });
+        Channels.Add(new ChannelItem { Name = "音乐", Tag = "music", Id = 4 });
+        Channels.Add(new ChannelItem { Name = "科技", Tag = "tech", Id = 5 });
+        Channels.Add(new ChannelItem { Name = "生活", Tag = "life", Id = 6 });
+        Channels.Add(new ChannelItem { Name = "影视", Tag = "film", Id = 7 });
+        Channels.Add(new ChannelItem { Name = "体育", Tag = "sport", Id = 8 });
+        RebuildQuickChannels();
     }
 
     private void LoadDefaultVideos()
     {
         Videos.Clear();
+        HeroMain = new VideoItem
+        {
+            Title = "WinUI3 桌面客户端开发入门教程",
+            Author = "AStation 开发者",
+            ViewCount = "1.2万",
+            Duration = "15:30",
+            Thumbnail = "ms-appx:///Assets/StoreLogo.png"
+        };
+        HeroSecond = null;
+        HeroThird = null;
+        HeroFourth = null;
+
         Videos.Add(new VideoItem
         {
             Title = "WinUI3 桌面客户端开发入门教程",

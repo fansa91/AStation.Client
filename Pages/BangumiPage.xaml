@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:AStation_Client.Controls"
     xmlns:models="using:AStation_Client.Models"
     mc:Ignorable="d">
 
@@ -74,117 +75,41 @@
             </Grid>
         </StackPanel>
 
-        <!-- 内容区：列表 or 空状态 -->
+        <!-- 内容区：网格 or 空状态；列宽交给 UniformGridLayout，不再手算 ItemWidth -->
         <Grid Grid.Row="2">
-            <!-- GridView 自带滚动，不要再套 ScrollViewer：嵌套会让它测量到无限宽，ItemWidth 失效 -->
-            <GridView
-                x:Name="BangumiList"
-                Padding="0,0,0,8"
-                SelectionMode="None"
-                IsItemClickEnabled="True"
-                ItemClick="BangumiList_ItemClick"
-                ScrollViewer.HorizontalScrollMode="Disabled"
-                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <GridView.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <ItemsWrapGrid Orientation="Horizontal" ItemWidth="176" ItemHeight="282" />
-                        </ItemsPanelTemplate>
-                    </GridView.ItemsPanel>
-                    <GridView.ItemContainerStyle>
-                        <Style TargetType="GridViewItem">
-                            <Setter Property="Padding" Value="0" />
-                            <Setter Property="Margin" Value="0,0,16,16" />
-                            <Setter Property="Background" Value="Transparent" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="VerticalContentAlignment" Value="Top" />
-                            <Setter Property="CornerRadius" Value="8" />
-                        </Style>
-                    </GridView.ItemContainerStyle>
-                    <GridView.ItemTemplate>
+            <ScrollViewer
+                x:Name="BangumiScroll"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <ItemsRepeater x:Name="BangumiList">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            ItemsStretch="Fill"
+                            MinColumnSpacing="16"
+                            MinItemHeight="302"
+                            MinItemWidth="150"
+                            MinRowSpacing="16" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:BangumiItem">
-                            <Grid RowSpacing="6">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <Grid Grid.Row="0" Height="200">
-                                    <Border
-                                        CornerRadius="8"
-                                        Background="{StaticResource ControlFillColorSecondaryBrush}">
-                                        <Image
-                                            Source="{x:Bind Cover, Converter={StaticResource StringToImageSourceConverter}}"
-                                            Stretch="UniformToFill" />
-                                    </Border>
-                                    <!-- 追番人数 -->
-                                    <Border
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Margin="0,6,6,0"
-                                        Padding="6,2"
-                                        CornerRadius="4"
-                                        Background="#99000000"
-                                        Visibility="{x:Bind StatText, Converter={StaticResource ObjectToVisibilityConverter}}">
-                                        <TextBlock
-                                            Text="{x:Bind StatText}"
-                                            FontSize="11"
-                                            Foreground="White" />
-                                    </Border>
-                                    <!-- 集数 -->
-                                    <Border
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Bottom"
-                                        Margin="6,0,0,6"
-                                        Padding="6,2"
-                                        CornerRadius="4"
-                                        Background="#99000000"
-                                        Visibility="{x:Bind EpisodeText, Converter={StaticResource ObjectToVisibilityConverter}}">
-                                        <TextBlock
-                                            Text="{x:Bind EpisodeText}"
-                                            FontSize="11"
-                                            Foreground="White" />
-                                    </Border>
-                                </Grid>
-
-                                <TextBlock
-                                    Grid.Row="1"
-                                    Text="{x:Bind Title}"
-                                    Style="{StaticResource BodyStrongTextBlockStyle}"
-                                    TextWrapping="Wrap"
-                                    MaxLines="2"
-                                    TextTrimming="CharacterEllipsis" />
-                            </Grid>
+                            <controls:MediaCard
+                                BottomLeftBadge="{x:Bind EpisodeText}"
+                                Click="BangumiCard_Click"
+                                Cover="{x:Bind Cover}"
+                                CoverAspect="0.75"
+                                Payload="{x:Bind}"
+                                Title="{x:Bind Title}"
+                                TopRightBadge="{x:Bind StatText}" />
                         </DataTemplate>
-                    </GridView.ItemTemplate>
-            </GridView>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollViewer>
 
             <!-- 空状态：说明真实情况并提供登录入口 -->
-            <StackPanel
-                x:Name="EmptyPanel"
-                Visibility="Collapsed"
-                MaxWidth="460"
-                Spacing="10"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center">
-                <TextBlock
-                    x:Name="EmptyTitle"
-                    Text="还没有追番数据"
-                    Style="{StaticResource SubtitleTextBlockStyle}"
-                    HorizontalAlignment="Center" />
-                <TextBlock
-                    x:Name="EmptyDescription"
-                    TextWrapping="Wrap"
-                    TextAlignment="Center"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                    Text="「我的追番」需要登录后读取你账号下的收藏；未登录时可以先看番剧库。" />
-                <Button
-                    x:Name="GoLoginButton"
-                    Content="去登录"
-                    HorizontalAlignment="Center"
-                    Style="{StaticResource AccentButtonStyle}"
-                    Click="GoLoginButton_Click" />
-            </StackPanel>
+            <controls:StatePanel
+                x:Name="BangumiState"
+                ActionClick="BangumiState_ActionClick" />
         </Grid>
     </Grid>
 </Page>

@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
+using AStation_Client.Controls;
 using AStation_Client.Models;
 using AStation_Client.Services;
 
@@ -167,16 +168,13 @@ public sealed partial class LivePage : Page
     /// <summary>
     /// 点击直播卡片 → 进入直播间播放页
     /// </summary>
-    private void LiveCard_Tapped(object sender, Microsoft.UI.Xaml.Input.TappedRoutedEventArgs e)
+    private void LiveCard_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement element) return;
+        if (sender is not MediaCard card) return;
 
-        // ItemsRepeater + x:Bind 模板的根元素没有 DataContext，数据对象走 Tag
-        var item = element.Tag as LiveItem ?? element.DataContext as LiveItem;
-
-        if (item is null)
+        if (card.Payload is not LiveItem item)
         {
-            RuntimeLog.Write("live", "卡片点击：取不到 LiveItem（Tag / DataContext 都为空）");
+            RuntimeLog.Write("live", "卡片点击：取不到 LiveItem 载荷");
             return;
         }
 

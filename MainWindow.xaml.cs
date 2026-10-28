@@ -45,7 +45,11 @@ public sealed partial class MainWindow : Window
             if (args.DidSizeChange) UpdateTitleBarInsets();
         };
         ShellRoot.SizeChanged += (_, _) => UpdateResponsiveLayout();
-        MainFrame.Navigated += (_, _) => BackButton.IsEnabled = MainFrame.CanGoBack;
+        MainFrame.Navigated += (_, e) =>
+        {
+            BackButton.IsEnabled = MainFrame.CanGoBack;
+            SyncNavSelection(e.SourcePageType);
+        };
 
         AccountState.EnsureLoaded();
         AccountState.Changed += (_, _) => RefreshAccountUi();
@@ -297,6 +301,39 @@ public sealed partial class MainWindow : Window
             MainFrame.Navigate(pageType);
         }
         BackButton.IsEnabled = MainFrame.CanGoBack;
+    }
+
+    /// <summary>
+    /// 页面可能不是从侧栏进来的（首页分区胶囊、频道卡片都会直接跳排行榜），
+    /// 这时把侧栏选中项拉回当前页面，避免「高亮停在首页、内容却是排行榜」，
+    /// 也避免再点首页时因为选中项没变而不触发切换。
+    /// </summary>
+    private void SyncNavSelection(Type pageType)
+    {
+        string? tag = pageType switch
+        {
+            var t when t == typeof(HomePage) => "home",
+            var t when t == typeof(ChannelPage) => "channel",
+            var t when t == typeof(RankPage) => "rank",
+            var t when t == typeof(BangumiPage) => "bangumi",
+            var t when t == typeof(LivePage) => "live",
+            var t when t == typeof(SettingsPage) => "settings",
+            var t when t == typeof(AboutPage) => "about",
+            _ => null
+        };
+
+        if (tag is null) return;
+
+        foreach (var item in NavView.MenuItems.Concat(NavView.FooterMenuItems).OfType<NavigationViewItem>())
+        {
+            if (item.Tag?.ToString() != tag) continue;
+            if (!ReferenceEquals(NavView.SelectedItem, item))
+            {
+                // 这里会再触发一次 SelectionChanged，但 OpenMainPage 判断了同页不重复导航，不会打转
+                NavView.SelectedItem = item;
+            }
+            return;
+        }
     }
 
     /// <summary>在覆盖层打开页面（搜索、登录、用户空间）</summary>

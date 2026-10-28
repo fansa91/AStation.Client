@@ -23,26 +23,38 @@
                 Visibility="Collapsed" />
         </StackPanel>
 
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled" VerticalScrollBarVisibility="Auto">
             <ItemsRepeater x:Name="ChannelGrid">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
-                        MinItemWidth="150"
-                        MinItemHeight="88"
+                        ItemsStretch="Fill"
                         MinColumnSpacing="12"
-                        MinRowSpacing="12"
-                        ItemsStretch="Fill" />
+                        MinItemHeight="92"
+                        MinItemWidth="160"
+                        MinRowSpacing="12" />
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate>
                         <Button
-                            Height="88"
+                            Height="92"
                             HorizontalAlignment="Stretch"
-                            Content="{Binding Name}"
-                            FontSize="15"
-                            HorizontalContentAlignment="Center"
+                            HorizontalContentAlignment="Left"
                             VerticalContentAlignment="Center"
-                            Style="{StaticResource ChannelCardButtonStyle}" />
+                            Click="ChannelCard_Click"
+                            Style="{StaticResource ChannelCardButtonStyle}"
+                            Tag="{Binding Id}">
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    FontSize="15"
+                                    FontWeight="SemiBold"
+                                    Text="{Binding Name}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="查看分区排行" />
+                            </StackPanel>
+                        </Button>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>

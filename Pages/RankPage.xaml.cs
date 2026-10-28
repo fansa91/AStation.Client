@@ -32,6 +32,13 @@ public sealed partial class RankPage : Page
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+
+        // 首页 / 频道页的「分区」入口带 channelId 进来，直接落到该分区榜单
+        if (e.Parameter is int channelId && channelId > 0)
+        {
+            _currentChannelId = channelId;
+        }
+
         await LoadDataAsync();
     }
 
@@ -64,6 +71,12 @@ public sealed partial class RankPage : Page
             var chip = CreateChip(channel.Name, channel.ChannelId);
             chip.IsChecked = channel.ChannelId == _currentChannelId;
             chip.Click += ChannelChip_Click;
+
+            // 从外部带 channelId 进来时，标题要显示对应的分区名而不是「全站」
+            if (channel.ChannelId == _currentChannelId)
+            {
+                _currentChannelName = channel.Name;
+            }
 
             _channelChips.Add(chip);
             ChannelPanel.Children.Add(chip);

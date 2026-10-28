@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:AStation_Client.Controls"
     xmlns:models="using:AStation_Client.Models"
     mc:Ignorable="d">
 
@@ -68,74 +69,29 @@
                 Spacing="8" />
         </ScrollViewer>
 
-        <!-- 直播卡片流 -->
+        <!-- 直播卡片流：与视频 / 番剧共用 MediaCard，只把封面角标换成 LIVE + 在线人数 -->
         <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
             <ItemsRepeater x:Name="LiveList">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
-                        MinItemWidth="170"
-                        MinItemHeight="180"
+                        ItemsStretch="Fill"
                         MinColumnSpacing="16"
-                        MinRowSpacing="16"
-                        ItemsStretch="Fill" />
+                        MinItemHeight="204"
+                        MinItemWidth="196"
+                        MinRowSpacing="20" />
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:LiveItem">
                         <!-- Tag 直接绑数据对象：ItemsRepeater + x:Bind 的模板不会给根元素设置 DataContext -->
-                        <Grid Background="Transparent" Tag="{x:Bind}" Tapped="LiveCard_Tapped">
-                            <StackPanel>
-                                <!-- 封面 + 在线人数浮层 -->
-                                <Grid Height="112">
-                                    <Border
-                                        CornerRadius="8,8,0,0"
-                                        Background="{StaticResource ControlFillColorSecondaryBrush}">
-                                        <Image
-                                            Source="{x:Bind Cover, Converter={StaticResource StringToImageSourceConverter}}"
-                                            Stretch="UniformToFill" />
-                                    </Border>
-                                    <Border
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Top"
-                                        Margin="0,8,8,0"
-                                        Padding="6,2"
-                                        CornerRadius="4"
-                                        Background="#99000000">
-                                        <TextBlock
-                                            Text="{x:Bind OnlineText}"
-                                            FontSize="11"
-                                            Foreground="White" />
-                                    </Border>
-                                    <Border
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Bottom"
-                                        Margin="8,0,0,8"
-                                        Padding="6,2"
-                                        CornerRadius="4"
-                                        Background="#99000000"
-                                        Visibility="{x:Bind Tag, Converter={StaticResource ObjectToVisibilityConverter}}">
-                                        <TextBlock
-                                            Text="{x:Bind Tag}"
-                                            FontSize="11"
-                                            Foreground="White" />
-                                    </Border>
-                                </Grid>
-
-                                <!-- 标题与主播 -->
-                                <StackPanel Padding="2,8,2,0" Spacing="4">
-                                    <TextBlock
-                                        Text="{x:Bind Title}"
-                                        Style="{StaticResource BodyTextBlockStyle}"
-                                        TextWrapping="Wrap"
-                                        MaxLines="2"
-                                        TextTrimming="CharacterEllipsis" />
-                                    <TextBlock
-                                        Text="{x:Bind Author}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Foreground="{StaticResource TextFillColorSecondaryBrush}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
+                        <controls:MediaCard
+                            BottomLeftBadge="{x:Bind Tag}"
+                            Click="LiveCard_Click"
+                            Cover="{x:Bind Cover}"
+                            IsLive="True"
+                            Subtitle="{x:Bind Author}"
+                            Payload="{x:Bind}"
+                            Title="{x:Bind Title}"
+                            TopRightBadge="{x:Bind OnlineText}" />
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
