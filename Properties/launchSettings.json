@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "AStation.Client (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "AStation.Client (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

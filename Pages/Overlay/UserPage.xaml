@@ -1,0 +1,15 @@
+<Page
+    x:Class="AStation_Client.Pages.Overlay.UserPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatible/2006">
+
+    <Grid Padding="24,16,24,16" RowSpacing="20">
+        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="用户空间" />
+
+        <StackPanel Spacing="16">
+            <TextBlock Text="用户页面开发中……" Style="{StaticResource BodyTextBlockStyle}" />
+        </StackPanel>
+    </Grid>
+</Page>
