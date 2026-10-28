@@ -91,7 +91,7 @@ cd AStation.Client
 
 # 构建
 dotnet build AStation.Client.csproj -c Debug
-# 产物：bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/AStation.Client.exe
+# 产物：bin/Debug/net10.0-windows10.0.26100.0/win-x64/AStation.Client.exe
 
 # 本地打包（与 CI 产物一致）
 dotnet publish AStation.Client.csproj -c Release -r win-x64 \
