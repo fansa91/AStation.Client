@@ -160,7 +160,7 @@ Start-Sleep -Milliseconds 600
 
 # ── 分区胶囊点进排行榜（趁首页是全新状态，UIA 树最稳） ──
 Log '--- 分区胶囊 → 排行榜 ---'
-$chip = Wait-Layouted '游戏' 'Button'
+$chip = Wait-Layouted '动画' 'Button'   # 分区条现在只放前 6 个常用分区
 if ($chip) {
     Click-El $chip
     Start-Sleep -Milliseconds 3200
