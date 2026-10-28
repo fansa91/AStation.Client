@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="AStation_Client.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -17,8 +18,12 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 自定义标题栏（参考 Bili.Copilot AppTitleBar）
-             注意：右侧要给系统的最小化/最大化/关闭按钮留出位置，否则账号、置顶按钮会被压在窗口按钮下面 -->
+        <!--
+            自定义标题栏
+              [汉堡] [图标+名称] [后退] [弹性搜索] [置顶·账号] [系统按钮让位列]
+            系统按钮让位用第 6 列宽度承担，不再改 Tail 的 Margin，
+            避免最大化 / 还原时右侧元素来回跳。
+        -->
         <Grid
             x:Name="AppTitleBar"
             Height="48"
@@ -26,73 +31,122 @@
             Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition x:Name="TitleBarInsetColumn" Width="0" />
             </Grid.ColumnDefinitions>
 
-            <!-- 应用图标 + 标题 -->
-            <StackPanel
+            <!-- 汉堡：NavigationView 自带的 toggle 已关闭，这里自己画一个 -->
+            <Button
+                x:Name="PaneToggleButton"
                 Grid.Column="0"
-                Orientation="Horizontal"
+                Margin="8,0,0,0"
                 VerticalAlignment="Center"
-                Spacing="8"
-                Margin="16,0,0,0">
-                <ImageIcon Source="Assets/AppIcon.ico" Width="18" Height="18" />
+                AutomationProperties.Name="导航"
+                Click="PaneToggleButton_Click"
+                Style="{StaticResource IconSubtleButtonStyle}"
+                ToolTipService.ToolTip="展开 / 收起导航">
+                <FontIcon FontSize="15" Glyph="&#xE700;" />
+            </Button>
+
+            <!-- 应用图标 + 名称（窄窗口隐藏名称） -->
+            <StackPanel
+                x:Name="AppBrand"
+                Grid.Column="1"
+                Margin="4,0,0,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <ImageIcon Width="18" Height="18" Source="Assets/AppIcon.ico" />
                 <TextBlock
+                    x:Name="AppBrandText"
                     VerticalAlignment="Center"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="AStation.Client"
-                    FontWeight="SemiBold" />
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                    Text="AStation" />
             </StackPanel>
 
-            <!-- 搜索框（居中，宽度自适应，两侧留白，不与右侧按钮挤在一起） -->
-            <AutoSuggestBox
-                Grid.Column="1"
-                x:Name="SearchBox"
-                MinWidth="220"
-                MaxWidth="520"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                PlaceholderText="搜索视频、用户、番剧"
-                QueryIcon="Find"
-                QuerySubmitted="SearchBox_QuerySubmitted"
-                TextChanged="SearchBox_TextChanged" />
-
-            <!-- 尾部：置顶 + 账号。Margin 的右侧会在代码里按系统窗口按钮宽度动态让位 -->
-            <StackPanel
-                x:Name="TitleBarTail"
+            <!-- 后退 -->
+            <Button
+                x:Name="BackButton"
                 Grid.Column="2"
-                Orientation="Horizontal"
+                Margin="8,0,0,0"
                 VerticalAlignment="Center"
-                Spacing="4"
-                Margin="12,0,16,0">
+                AutomationProperties.Name="后退"
+                Click="BackButton_Click"
+                IsEnabled="False"
+                Style="{StaticResource IconSubtleButtonStyle}"
+                ToolTipService.ToolTip="后退">
+                <FontIcon FontSize="14" Glyph="&#xE72B;" />
+            </Button>
+
+            <!-- 搜索：弹性宽度，窄窗口收成图标 -->
+            <Grid
+                Grid.Column="3"
+                Margin="12,0"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center">
+                <AutoSuggestBox
+                    x:Name="SearchBox"
+                    MaxWidth="520"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    PlaceholderText="搜索视频、用户、番剧"
+                    QueryIcon="Find"
+                    QuerySubmitted="SearchBox_QuerySubmitted"
+                    TextChanged="SearchBox_TextChanged" />
+                <Button
+                    x:Name="SearchIconButton"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="搜索"
+                    Click="SearchIconButton_Click"
+                    Style="{StaticResource IconSubtleButtonStyle}"
+                    ToolTipService.ToolTip="搜索"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="15" Glyph="&#xE721;" />
+                </Button>
+            </Grid>
+
+            <!-- 尾部操作 -->
+            <StackPanel
+                Grid.Column="4"
+                Margin="4,0,12,0"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="2">
                 <Button
                     x:Name="PinButton"
-                    ToolTipService.ToolTip="窗口置顶"
-                    Style="{StaticResource AppButtonStyle}"
-                    Click="PinButton_Click">
-                    <SymbolIcon Symbol="Pin" />
+                    AutomationProperties.Name="窗口置顶"
+                    Click="PinButton_Click"
+                    Style="{StaticResource IconSubtleButtonStyle}"
+                    ToolTipService.ToolTip="窗口置顶">
+                    <FontIcon FontSize="14" Glyph="&#xE718;" />
                 </Button>
                 <Button
                     x:Name="AccountButton"
-                    ToolTipService.ToolTip="账号 / 登录"
-                    Style="{StaticResource AppButtonStyle}"
-                    Click="AccountButton_Click">
-                    <SymbolIcon Symbol="Contact" />
+                    AutomationProperties.Name="账号"
+                    Click="AccountButton_Click"
+                    Style="{StaticResource IconSubtleButtonStyle}"
+                    ToolTipService.ToolTip="账号 / 登录">
+                    <FontIcon x:Name="AccountIcon" FontSize="14" Glyph="&#xE77B;" />
                 </Button>
             </StackPanel>
+
+            <!-- 系统窗口按钮（最小化/最大化/关闭）让位 -->
+            <Border Grid.Column="5" />
         </Grid>
 
-        <!-- 主内容区：NavigationView + 双 Frame -->
+        <!-- 主内容区 -->
         <NavigationView
             x:Name="NavView"
             Grid.Row="1"
             IsBackButtonVisible="Collapsed"
+            IsPaneToggleButtonVisible="False"
             IsSettingsVisible="False"
-            IsPaneToggleButtonVisible="True"
-            IsPaneOpen="True"
-            OpenPaneLength="188"
-            PaneDisplayMode="Left"
             SelectionChanged="NavView_SelectionChanged"
             Style="{StaticResource NavigationViewStyle}">
             <NavigationView.MenuItems>
@@ -100,10 +154,9 @@
                 <NavigationViewItem
                     x:Name="NavItemHome"
                     Content="首页"
-                    Tag="home"
-                    IsSelected="True">
+                    IsSelected="True"
+                    Tag="home">
                     <NavigationViewItem.Icon>
-                        <!-- 房子 -->
                         <PathIcon Data="M12 2.9 2 11h3v10h5.3v-6.1h3.4V21H19V11h3z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -112,7 +165,6 @@
                     Content="频道"
                     Tag="channel">
                     <NavigationViewItem.Icon>
-                        <!-- 四宫格：分区/频道 -->
                         <PathIcon Data="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -121,7 +173,6 @@
                     Content="排行榜"
                     Tag="rank">
                     <NavigationViewItem.Icon>
-                        <!-- 递增柱状图：榜单 -->
                         <PathIcon Data="M3.5 14.5h4.2V21H3.5zM9.9 9h4.2v12H9.9zM16.3 3.5h4.2V21h-4.2z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -130,7 +181,6 @@
                     Content="番剧"
                     Tag="bangumi">
                     <NavigationViewItem.Icon>
-                        <!-- 电视：追番 -->
                         <PathIcon Data="M2.5 4h19v12.2h-19zM8.6 17.9h6.8V20H8.6z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
@@ -139,69 +189,68 @@
                     Content="直播"
                     Tag="live">
                     <NavigationViewItem.Icon>
-                        <!-- 摄像机：直播 -->
                         <PathIcon Data="M2.5 6.6h11.2v10.8H2.5zM14.9 10.3 21.5 6.2v11.6l-6.6-4.1z" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItemSeparator />
+            </NavigationView.MenuItems>
+
+            <!-- 底部：账号区 + 设置 + 关于（账号区与标题栏账号按钮共享状态） -->
+            <NavigationView.FooterMenuItems>
                 <NavigationViewItem
-                    x:Name="NavItemLogin"
+                    x:Name="NavItemAccount"
                     Content="登录"
-                    Tag="login">
+                    SelectsOnInvoked="False"
+                    Tag="account">
                     <NavigationViewItem.Icon>
-                        <!-- 人像：账号 -->
-                        <PathIcon Data="M12 2.9a4.2 4.2 0 1 1 0 8.4 4.2 4.2 0 0 1 0-8.4zM4 20.6c0-3.6 3.6-5.9 8-5.9s8 2.3 8 5.9v.4H4z" />
+                        <FontIcon Glyph="&#xE77B;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
                     x:Name="NavItemSettings"
                     Content="设置"
-                    Tag="settings"
-                    Icon="Setting" />
-            </NavigationView.MenuItems>
-
-            <NavigationView.FooterMenuItems>
-                <NavigationViewItem Content="关于" Tag="about" Icon="Help" />
+                    Tag="settings">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE713;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="关于" Tag="about">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE897;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.FooterMenuItems>
 
-            <!-- 双 Frame：MainFrame 主页面，OverlayFrame 覆盖层页面 -->
+            <!-- 内容 + 覆盖层 -->
             <Grid x:Name="MainGrid">
-                <VisualStateManager.VisualStateGroups>
-                    <VisualStateGroup x:Name="WindowStates">
-                        <VisualState x:Name="WideState">
-                            <VisualState.StateTriggers>
-                                <AdaptiveTrigger MinWindowWidth="{StaticResource AppWindowNarrowMinWidth}" />
-                            </VisualState.StateTriggers>
-                        </VisualState>
-                        <VisualState x:Name="NarrowState">
-                            <VisualState.StateTriggers>
-                                <AdaptiveTrigger MinWindowWidth="0" />
-                            </VisualState.StateTriggers>
-                            <VisualState.Setters>
-                                <Setter Target="SearchBox.MinWidth" Value="120" />
-                                <Setter Target="SearchBox.PlaceholderText" Value="" />
-                                <Setter Target="AppTitleBar.Padding" Value="0" />
-                            </VisualState.Setters>
-                        </VisualState>
-                    </VisualStateGroup>
-                    <VisualStateGroup x:Name="OverlayStates">
-                        <VisualState x:Name="OverlayClosed" />
-                        <VisualState x:Name="OverlayOpen">
-                            <VisualState.Setters>
-                                <Setter Target="MainFrame.Opacity" Value="0.4" />
-                                <Setter Target="NavView.IsEnabled" Value="False" />
-                            </VisualState.Setters>
-                        </VisualState>
-                    </VisualStateGroup>
-                </VisualStateManager.VisualStateGroups>
-
-                <Grid>
+                <!-- 限宽宿主：≥1600 时内容居中，避免超宽屏卡片被拉散 -->
+                <Grid x:Name="ContentHost" HorizontalAlignment="Stretch">
                     <Frame x:Name="MainFrame" />
-                    <Frame
-                        x:Name="OverlayFrame"
-                        Visibility="Collapsed"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch" />
+                </Grid>
+
+                <!-- 覆盖层壳：scrim + 卡片，搜索 / 登录 / 用户空间共用 -->
+                <Grid x:Name="OverlayHost" Visibility="Collapsed">
+                    <Grid.KeyboardAccelerators>
+                        <KeyboardAccelerator Invoked="OverlayEscape_Invoked" Key="Escape" />
+                    </Grid.KeyboardAccelerators>
+
+                    <Border
+                        x:Name="OverlayScrim"
+                        Background="{ThemeResource AppScrimBrush}"
+                        Tapped="OverlayScrim_Tapped" />
+
+                    <Border
+                        x:Name="OverlayCard"
+                        MaxWidth="880"
+                        MaxHeight="760"
+                        Margin="24"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <Frame x:Name="OverlayFrame" />
+                    </Border>
                 </Grid>
             </Grid>
         </NavigationView>

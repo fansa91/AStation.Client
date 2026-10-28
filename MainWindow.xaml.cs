@@ -13,7 +13,17 @@ namespace AStation_Client;
 
 public sealed partial class MainWindow : Window
 {
+    // ── 响应式断点（与 docs/ui-layout-plan.md §5 一致） ──
+    private const double BreakpointSearchCollapse = 900;   // 搜索框收成图标
+    private const double BreakpointNavCompact = 1000;      // 导航转紧凑（48px 图标栏）
+    private const double BreakpointBrandHide = 1100;       // 隐藏应用名
+    private const double BreakpointNavWide = 1200;         // 导航转展开（240px）
+    private const double BreakpointContentWide = 1600;     // 内容限宽起点
+    private const double BreakpointContentUltra = 1920;    // 超宽内容限宽
+
     private bool _isTopmost;
+    private double _lastLayoutWidth = -1;
+    private NavigationViewPaneDisplayMode _responsivePaneMode = NavigationViewPaneDisplayMode.Left;
 
     public MainWindow()
     {
@@ -24,15 +34,22 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         AppWindow.SetIcon("Assets/AppIcon.ico");
 
-        // 恢复设置：侧边栏展开状态 + 主题
-        NavView.IsPaneOpen = AppSettings.Current.ExpandSidebar;
         SettingsPage.ApplyTheme();
+
+        // 导航按当前宽度决定展开 / 紧凑 / 覆盖
+        UpdateResponsiveLayout(force: true);
 
         Activated += (_, _) => UpdateTitleBarInsets();
         AppWindow.Changed += (_, args) =>
         {
             if (args.DidSizeChange) UpdateTitleBarInsets();
         };
+        ShellRoot.SizeChanged += (_, _) => UpdateResponsiveLayout();
+        MainFrame.Navigated += (_, _) => BackButton.IsEnabled = MainFrame.CanGoBack;
+
+        AccountState.EnsureLoaded();
+        AccountState.Changed += (_, _) => RefreshAccountUi();
+        RefreshAccountUi();
 
         ApplyInitialWindowSize();
 
@@ -42,7 +59,7 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// 冷启动时的窗口尺寸。
-    /// WinUI3 默认给的是一个偏小的窗口，播放页两栏布局（播放器 + 340px 侧栏）会挤在一起，
+    /// WinUI3 默认给的是一个偏小的窗口，播放页两栏布局会挤在一起，
     /// 所以启动时显式给一个按工作区分档的尺寸，并居中显示。
     /// </summary>
     private void ApplyInitialWindowSize()
@@ -74,9 +91,66 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // ───────────── 响应式 ─────────────
+
+    /// <summary>
+    /// 按窗口宽度切换导航形态与标题栏密度。
+    /// 设置里的「侧边栏常驻展开」只决定 ≥1200 时是否展开，不覆盖断点。
+    /// </summary>
+    private void UpdateResponsiveLayout(bool force = false)
+    {
+        double width = ShellRoot.ActualWidth;
+        if (width <= 0) width = AppWindow.Size.Width;
+        if (width <= 0) return;
+
+        if (!force && Math.Abs(width - _lastLayoutWidth) < 2 && _lastLayoutWidth > 0) return;
+        _lastLayoutWidth = width;
+
+        // 标题栏密度：窄窗口只留图标，名称让位给搜索框
+        AppBrandText.Visibility = width >= BreakpointBrandHide ? Visibility.Visible : Visibility.Collapsed;
+
+        bool collapseSearch = width < BreakpointSearchCollapse;
+        SearchBox.Visibility = collapseSearch ? Visibility.Collapsed : Visibility.Visible;
+        SearchIconButton.Visibility = collapseSearch ? Visibility.Visible : Visibility.Collapsed;
+
+        // 内容限宽（超宽屏居中，避免卡片被拉散）
+        if (_chromeHidden)
+        {
+            ContentHost.MaxWidth = double.PositiveInfinity;
+        }
+        else if (width >= BreakpointContentUltra)
+        {
+            ContentHost.MaxWidth = BreakpointContentUltra;
+        }
+        else if (width >= BreakpointContentWide)
+        {
+            ContentHost.MaxWidth = BreakpointContentWide;
+        }
+        else
+        {
+            ContentHost.MaxWidth = double.PositiveInfinity;
+        }
+
+        if (_chromeHidden) return;   // 全屏期间不改导航
+
+        var mode = width >= BreakpointNavWide
+            ? NavigationViewPaneDisplayMode.Left
+            : width >= BreakpointNavCompact
+                ? NavigationViewPaneDisplayMode.LeftCompact
+                : NavigationViewPaneDisplayMode.LeftMinimal;
+
+        if (NavView.PaneDisplayMode != mode)
+        {
+            NavView.PaneDisplayMode = mode;
+            _responsivePaneMode = mode;
+            NavView.IsPaneOpen = mode == NavigationViewPaneDisplayMode.Left && AppSettings.Current.ExpandSidebar;
+        }
+    }
+
     /// <summary>
     /// 给系统窗口按钮（最小化/最大化/关闭）让位。
-    /// 不让位的话，右侧的置顶、账号按钮会被压在窗口按钮下面。
+    /// 让位由标题栏最后一列的宽度承担，右侧内容不再改 Margin，
+    /// 最大化 / 还原时不会出现元素横向跳动。
     /// </summary>
     private void UpdateTitleBarInsets()
     {
@@ -85,10 +159,8 @@ public sealed partial class MainWindow : Window
         // 少数情况下（窗口还没真正显示）拿到的 inset 是 0，用标准三按钮宽度兜底
         if (reserved <= 0) reserved = 138;
 
-        double right = Math.Max(16, reserved + 8);
-        if (Math.Abs(TitleBarTail.Margin.Right - right) < 1) return;
-
-        TitleBarTail.Margin = new Thickness(12, 0, right, 0);
+        if (Math.Abs(TitleBarInsetColumn.Width.Value - reserved) < 1) return;
+        TitleBarInsetColumn.Width = new GridLength(reserved);
     }
 
     /// <summary>诊断用：把导航壳的布局状态拼成一行，排查全屏残留边距</summary>
@@ -114,12 +186,193 @@ public sealed partial class MainWindow : Window
     /// <summary>侧边栏展开 / 收起（设置页调用）</summary>
     public void SetSidebarExpanded(bool expanded)
     {
-        NavView.IsPaneOpen = expanded;
+        if (_chromeHidden) return;
+        if (NavView.PaneDisplayMode == NavigationViewPaneDisplayMode.Left)
+        {
+            NavView.IsPaneOpen = expanded;
+        }
     }
+
+    // ───────────── 标题栏交互 ─────────────
+
+    private void PaneToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        NavView.IsPaneOpen = !NavView.IsPaneOpen;
+    }
+
+    private void BackButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (MainFrame.CanGoBack) MainFrame.GoBack();
+    }
+
+    private void SearchIconButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenOverlay(typeof(SearchPage));
+    }
+
+    // ───────────── 账号区 ─────────────
+
+    private void RefreshAccountUi()
+    {
+        bool logged = AccountState.IsLoggedIn;
+        string name = string.IsNullOrWhiteSpace(AccountState.UserName) ? "我的账号" : AccountState.UserName!;
+
+        NavItemAccount.Content = logged ? name : "登录";
+        NavItemAccount.Icon = new FontIcon { Glyph = logged ? "\uE748" : "\uE77B" };
+
+        AccountIcon.Glyph = logged ? "\uE748" : "\uE77B";
+        ToolTipService.SetToolTip(AccountButton, logged ? name : "账号 / 登录");
+    }
+
+    private void AccountButton_Click(object sender, RoutedEventArgs e)
+    {
+        OpenAccount();
+    }
+
+    private void OpenAccount()
+    {
+        if (AccountState.IsLoggedIn)
+        {
+            OpenOverlay(typeof(UserPage));
+        }
+        else
+        {
+            OpenOverlay(typeof(LoginPage));
+        }
+    }
+
+    // ───────────── 导航 ─────────────
+
+    /// <summary>侧边栏导航选择变更</summary>
+    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.IsSettingsSelected)
+        {
+            OpenMainPage(typeof(SettingsPage));
+            return;
+        }
+
+        if (args.SelectedItem is NavigationViewItem item)
+        {
+            string tag = item.Tag?.ToString() ?? string.Empty;
+            switch (tag)
+            {
+                case "home":
+                    OpenMainPage(typeof(HomePage));
+                    break;
+                case "channel":
+                    OpenMainPage(typeof(ChannelPage));
+                    break;
+                case "rank":
+                    OpenMainPage(typeof(RankPage));
+                    break;
+                case "bangumi":
+                    OpenMainPage(typeof(BangumiPage));
+                    break;
+                case "live":
+                    OpenMainPage(typeof(LivePage));
+                    break;
+                case "settings":
+                    OpenMainPage(typeof(SettingsPage));
+                    break;
+                case "account":
+                    OpenAccount();
+                    break;
+                case "about":
+                    OpenMainPage(typeof(AboutPage));
+                    break;
+                default:
+                    OpenMainPage(typeof(HomePage));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>在主 Frame 打开页面（关闭覆盖层）</summary>
+    private void OpenMainPage(Type pageType)
+    {
+        CloseOverlay();
+        if (MainFrame.CurrentSourcePageType != pageType)
+        {
+            MainFrame.Navigate(pageType);
+        }
+        BackButton.IsEnabled = MainFrame.CanGoBack;
+    }
+
+    /// <summary>在覆盖层打开页面（搜索、登录、用户空间）</summary>
+    public void OpenOverlay(Type pageType)
+    {
+        // 小窗口下卡片要跟着缩，不能按 880 硬撑
+        double availableWidth = MainGrid.ActualWidth > 0 ? MainGrid.ActualWidth : 1200;
+        double availableHeight = MainGrid.ActualHeight > 0 ? MainGrid.ActualHeight : 800;
+
+        OverlayCard.MaxWidth = Math.Max(360, Math.Min(880, availableWidth - 48));
+        OverlayCard.MaxHeight = Math.Max(280, Math.Min(760, availableHeight - 48));
+
+        OverlayHost.Visibility = Visibility.Visible;
+        OverlayFrame.Navigate(pageType);
+        NavView.IsEnabled = false;
+    }
+
+    /// <summary>关闭覆盖层</summary>
+    public void CloseOverlay()
+    {
+        if (OverlayHost.Visibility == Visibility.Collapsed) return;
+
+        OverlayHost.Visibility = Visibility.Collapsed;
+
+        // 清空内容，避免下次打开沿用到旧页面状态
+        if (OverlayFrame.Content is not null) OverlayFrame.Content = null;
+
+        NavView.IsEnabled = true;
+    }
+
+    private void OverlayScrim_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        CloseOverlay();
+    }
+
+    private void OverlayEscape_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        CloseOverlay();
+        args.Handled = true;
+    }
+
+    // ───────────── 窗口置顶 ─────────────
+
+    private void PinButton_Click(object sender, RoutedEventArgs e)
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        _isTopmost = !_isTopmost;
+
+        SetWindowPos(hwnd,
+            _isTopmost ? HwndTopmost : HwndNotTopmost,
+            0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate);
+
+        PinButton.Opacity = _isTopmost ? 1.0 : 0.62;
+        ToolTipService.SetToolTip(PinButton, _isTopmost ? "取消置顶" : "窗口置顶");
+    }
+
+    // ───────────── 搜索 ─────────────
+
+    private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (!string.IsNullOrWhiteSpace(args.QueryText))
+        {
+            OpenOverlay(typeof(SearchPage));
+        }
+    }
+
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        // 预留：搜索联想
+    }
+
+    // ───────────── 全屏外壳 ─────────────
 
     private bool _paneOpenBeforeChromeHidden;
     private bool _paneToggleVisibleBeforeChromeHidden = true;
-    private NavigationViewPaneDisplayMode _paneDisplayModeBeforeChromeHidden = NavigationViewPaneDisplayMode.Left;
 
     /// <summary>
     /// 显示 / 隐藏窗口外壳（标题栏 + 侧边栏）。播放页全屏时调用，
@@ -131,11 +384,12 @@ public sealed partial class MainWindow : Window
         {
             _paneOpenBeforeChromeHidden = NavView.IsPaneOpen;
             _paneToggleVisibleBeforeChromeHidden = NavView.IsPaneToggleButtonVisible;
-            _paneDisplayModeBeforeChromeHidden = NavView.PaneDisplayMode;
 
             NavView.IsPaneOpen = false;
             NavView.IsPaneVisible = false;
             NavView.IsPaneToggleButtonVisible = false;
+
+            ContentHost.MaxWidth = double.PositiveInfinity;
 
             // Left / Top 模式下 NavigationView 都会给内容区预留一条 CompactPaneLength(48px)
             // 的边（汉堡按钮的地盘），全屏时画面左边就是一条白边。
@@ -147,10 +401,14 @@ public sealed partial class MainWindow : Window
         else
         {
             ResetFullscreenBleed();
-            NavView.IsPaneToggleButtonVisible = _paneToggleVisibleBeforeChromeHidden;
             NavView.IsPaneVisible = true;
+            NavView.IsPaneToggleButtonVisible = _paneToggleVisibleBeforeChromeHidden;
+
+            // 导航形态按当前宽度重算，不还原全屏前的快照
+            // （全屏时窗口尺寸变了，还原旧模式会出现「窄窗口却是展开态」）
+            _lastLayoutWidth = -1;
+            UpdateResponsiveLayout(force: true);
             NavView.IsPaneOpen = _paneOpenBeforeChromeHidden;
-            NavView.PaneDisplayMode = _paneDisplayModeBeforeChromeHidden;
         }
 
         TitleBarRow.Height = visible ? new GridLength(48) : new GridLength(0);
@@ -295,126 +553,6 @@ public sealed partial class MainWindow : Window
         {
             _savedStyle = null;
         }
-    }
-
-    // ───────────── 导航 / 覆盖层 / 标题栏交互 ─────────────
-
-    /// <summary>
-    /// 侧边栏导航选择变更
-    /// </summary>
-    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
-    {
-        if (args.IsSettingsSelected)
-        {
-            OpenMainPage(typeof(SettingsPage));
-            return;
-        }
-
-        if (args.SelectedItem is NavigationViewItem item)
-        {
-            string tag = item.Tag?.ToString() ?? string.Empty;
-            switch (tag)
-            {
-                case "home":
-                    OpenMainPage(typeof(HomePage));
-                    break;
-                case "channel":
-                    OpenMainPage(typeof(ChannelPage));
-                    break;
-                case "rank":
-                    OpenMainPage(typeof(RankPage));
-                    break;
-                case "bangumi":
-                    OpenMainPage(typeof(BangumiPage));
-                    break;
-                case "live":
-                    OpenMainPage(typeof(LivePage));
-                    break;
-                case "login":
-                    OpenMainPage(typeof(LoginPage));
-                    break;
-                case "about":
-                    OpenMainPage(typeof(AboutPage));
-                    break;
-                default:
-                    OpenMainPage(typeof(HomePage));
-                    break;
-            }
-        }
-    }
-
-    /// <summary>
-    /// 在主 Frame 打开页面（关闭覆盖层）
-    /// </summary>
-    private void OpenMainPage(Type pageType)
-    {
-        CloseOverlay();
-        MainFrame.Navigate(pageType);
-    }
-
-    /// <summary>
-    /// 在覆盖层 Frame 打开页面（搜索、用户空间等）
-    /// </summary>
-    public void OpenOverlay(Type pageType)
-    {
-        OverlayFrame.Navigate(pageType);
-        OverlayFrame.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
-        MainFrame.Opacity = 0.4;
-        NavView.IsEnabled = false;
-    }
-
-    /// <summary>
-    /// 关闭覆盖层
-    /// </summary>
-    public void CloseOverlay()
-    {
-        OverlayFrame.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
-        MainFrame.Opacity = 1.0;
-        NavView.IsEnabled = true;
-    }
-
-    /// <summary>
-    /// 账号按钮点击：打开登录页（覆盖层）
-    /// </summary>
-    private void AccountButton_Click(object sender, RoutedEventArgs e)
-    {
-        OpenOverlay(typeof(LoginPage));
-    }
-
-    /// <summary>
-    /// 置顶按钮：切换窗口 TopMost
-    /// </summary>
-    private void PinButton_Click(object sender, RoutedEventArgs e)
-    {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        _isTopmost = !_isTopmost;
-
-        SetWindowPos(hwnd,
-            _isTopmost ? HwndTopmost : HwndNotTopmost,
-            0, 0, 0, 0,
-            SwpNoMove | SwpNoSize | SwpNoActivate);
-
-        PinButton.Opacity = _isTopmost ? 1.0 : 0.72;
-        ToolTipService.SetToolTip(PinButton, _isTopmost ? "取消置顶" : "窗口置顶");
-    }
-
-    /// <summary>
-    /// 搜索框查询提交：打开搜索页（覆盖层）
-    /// </summary>
-    private void SearchBox_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
-    {
-        if (!string.IsNullOrWhiteSpace(args.QueryText))
-        {
-            OpenOverlay(typeof(SearchPage));
-        }
-    }
-
-    /// <summary>
-    /// 搜索框文本变更：可实现联想建议
-    /// </summary>
-    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
-    {
-        // 预留：搜索联想
     }
 
     // ───────────── Win32：窗口置顶 ─────────────

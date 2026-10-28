@@ -215,6 +215,9 @@ public sealed partial class LoginPage : Page
                 LoginResultText.Text = "登录成功，页面将自动关闭";
                 LoginResultText.Visibility = Visibility.Visible;
 
+                // 通知外壳刷新账号区
+                AccountState.MarkLoggedIn();
+
                 // 关闭覆盖层
                 CloseOverlayAfterDelay();
             }
@@ -349,6 +352,7 @@ public sealed partial class LoginPage : Page
             if (result?.Result == 0)
             {
                 ShowLoginResult("登录成功，页面将自动关闭", isError: false);
+                AccountState.MarkLoggedIn(username);
                 CloseOverlayAfterDelay();
             }
             else
