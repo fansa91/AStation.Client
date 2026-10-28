@@ -15,6 +15,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <!-- 版本号默认值（README 里写的 0.1 对应这里）。
+         CI 按 git tag 覆盖：-p:Version=<tag 去掉 v> -->
+    <Version>0.1.0</Version>
+    <AssemblyTitle>AStation.Client</AssemblyTitle>
+    <Product>AStation.Client</Product>
+    <Description>AcFun 第三方桌面客户端</Description>
+
     <!-- .NET 运行时自包含 -->
     <SelfContained>true</SelfContained>
 
