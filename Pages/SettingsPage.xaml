@@ -8,16 +8,17 @@
 
     <Page.Resources>
         <Style x:Key="SectionCardStyle" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource ControlFillColorSecondaryBrush}" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusCard}" />
             <Setter Property="Padding" Value="16,14" />
         </Style>
-        <Style x:Key="RowTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+        <Style x:Key="RowTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}">
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style x:Key="RowDescStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Style x:Key="RowDescStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionWrapTextStyle}">
             <Setter Property="Foreground" Value="{StaticResource TextFillColorSecondaryBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </Page.Resources>
 
@@ -25,14 +26,14 @@
         HorizontalScrollBarVisibility="Disabled"
         HorizontalScrollMode="Disabled"
         VerticalScrollBarVisibility="Auto">
-        <StackPanel Padding="24,8,24,24" Spacing="14" MaxWidth="920" HorizontalAlignment="Left">
+        <StackPanel x:Name="ContentPanel" Padding="24,8,24,24" Spacing="14" MaxWidth="920" HorizontalAlignment="Stretch">
 
-            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="设置" />
+            <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="设置" />
 
             <!-- 外观 -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="外观" />
+                    <TextBlock Style="{StaticResource GroupTitleTextStyle}" Text="外观" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -76,7 +77,7 @@
             <!-- 播放 -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="播放" />
+                    <TextBlock Style="{StaticResource GroupTitleTextStyle}" Text="播放" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -173,7 +174,7 @@
             <!-- 弹幕 -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="弹幕" />
+                    <TextBlock Style="{StaticResource GroupTitleTextStyle}" Text="弹幕" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -272,7 +273,7 @@
             <!-- 直播 -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="直播" />
+                    <TextBlock Style="{StaticResource GroupTitleTextStyle}" Text="直播" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
@@ -318,7 +319,7 @@
             <!-- 数据与关于 -->
             <Border Style="{StaticResource SectionCardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="数据与关于" />
+                    <TextBlock Style="{StaticResource GroupTitleTextStyle}" Text="数据与关于" />
 
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>

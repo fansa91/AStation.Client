@@ -21,7 +21,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Style="{StaticResource TitleTextBlockStyle}" Text="番剧" />
+            <TextBlock Grid.Column="0" Style="{StaticResource PageTitleTextStyle}" Text="番剧" />
             <Button
                 Grid.Column="1"
                 Content="刷新"
@@ -68,7 +68,7 @@
                 <TextBlock
                     Grid.Column="1"
                     x:Name="HintText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource MetaTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}"
                     Visibility="Collapsed"
                     TextTrimming="CharacterEllipsis" />

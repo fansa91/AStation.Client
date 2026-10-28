@@ -133,11 +133,11 @@ public class HomeViewModel : INotifyPropertyChanged
         RebuildQuickChannels();
     }
 
-    /// <summary>分区条只放前 8 个，避免首页横向拉成一条长龙</summary>
+    /// <summary>分区条只放前 6 个常用分区，其余走「全部分区」，避免首页横向拉成一条长龙</summary>
     private void RebuildQuickChannels()
     {
         QuickChannels.Clear();
-        foreach (var channel in Channels.Take(8))
+        foreach (var channel in Channels.Take(6))
         {
             QuickChannels.Add(channel);
         }

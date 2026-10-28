@@ -112,6 +112,7 @@
                 Orientation="Horizontal"
                 Spacing="6">
                 <TextBlock
+                    x:Name="SubtitleText"
                     MaxLines="1"
                     Style="{StaticResource MetaTextStyle}"
                     Text="{x:Bind Subtitle, Mode=OneWay}"
@@ -122,6 +123,7 @@
                     Text="·"
                     Visibility="Collapsed" />
                 <TextBlock
+                    x:Name="MetaText"
                     MaxLines="1"
                     Style="{StaticResource MetaTextStyle}"
                     Text="{x:Bind Meta, Mode=OneWay}"

@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Diagnostics;
@@ -23,6 +24,49 @@ public sealed partial class SettingsPage : Page
         InitializeComponent();
         LoadValues();
         _loading = false;
+
+        SizeChanged += (_, e) => ApplyResponsiveLayout(e.NewSize.Width);
+        Loaded += (_, _) => ApplyResponsiveLayout(ActualWidth);
+    }
+
+    /// <summary>
+    /// 窄窗口的取舍：设置行是「标题 + 说明 + 控件」三件套，
+    /// 挤不下时先把说明收起来（标题和控件保持一行可操作），而不是让说明挤成竖排。
+    /// </summary>
+    private void ApplyResponsiveLayout(double width)
+    {
+        if (width <= 0) return;
+
+        bool narrow = width < 720;
+        if (_narrow == narrow) return;
+        _narrow = narrow;
+
+        ContentPanel.Padding = width < 900
+            ? new Thickness(16, 8, 16, 20)
+            : new Thickness(24, 8, 24, 24);
+
+        foreach (var desc in FindDescendants(ContentPanel).OfType<TextBlock>())
+        {
+            if (!ReferenceEquals(desc.Style, Resources["RowDescStyle"])) continue;
+            desc.Visibility = narrow ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
+
+    private bool _narrow;
+
+    private static IEnumerable<DependencyObject> FindDescendants(DependencyObject root)
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            yield return child;
+
+            foreach (var grand in FindDescendants(child))
+            {
+                yield return grand;
+            }
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

@@ -134,6 +134,11 @@ public sealed partial class RankPage : Page
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
 
+        if (Items.Count == 0)
+        {
+            RankState.ShowLoading("正在加载榜单…");
+        }
+
         if (!_channelsBuilt)
         {
             try
@@ -157,13 +162,15 @@ public sealed partial class RankPage : Page
         }
 
         List<RankEntry> entries = new();
+        string? error = null;
         try
         {
             entries = await ServiceLocator.Rank.GetRankListAsync(_currentChannelId, _currentPeriod);
         }
-        catch
+        catch (Exception ex)
         {
-            // 网络异常：按空处理
+            // 网络异常：不再静默当空，交给状态面板说明并可重试
+            error = ex.Message;
         }
 
         Items.Clear();
@@ -180,10 +187,32 @@ public sealed partial class RankPage : Page
         SectionTitle.Text = $"{_currentChannelName} · {RankService.ToPeriodLabel(_currentPeriod)}";
 
         bool empty = Items.Count == 0;
-        HintText.Text = empty
-            ? $"{_currentChannelName}的{PerioShortLabel()}暂时没有数据，换个周期或频道试试"
-            : $"共 {Items.Count} 条 · 点击任意条目直接播放";
+
+        if (error is not null)
+        {
+            RankState.ShowError($"榜单加载失败：{error}", actionText: "重试");
+            HintText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        if (empty)
+        {
+            RankState.ShowEmpty(
+                $"{_currentChannelName}的{PerioShortLabel()}暂时没有数据",
+                "换个周期或频道试试。",
+                actionText: "重试");
+            HintText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RankState.Hide();
+        HintText.Text = $"共 {Items.Count} 条 · 点击任意条目直接播放";
         HintText.Visibility = Visibility.Visible;
+    }
+
+    private async void RankState_ActionClick(object? sender, EventArgs e)
+    {
+        await LoadDataAsync();
     }
 
     private string PerioShortLabel() => _currentPeriod switch

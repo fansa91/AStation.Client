@@ -247,6 +247,18 @@ public sealed partial class MainWindow : Window
 
     // ───────────── 导航 ─────────────
 
+    /// <summary>
+    /// 账号项设了 SelectsOnInvoked=False（不抢走页面高亮），点击不会触发 SelectionChanged，
+    /// 只能靠 ItemInvoked 开覆盖层。
+    /// </summary>
+    private void NavView_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItemContainer is NavigationViewItem item && item.Tag?.ToString() == "account")
+        {
+            OpenAccount();
+        }
+    }
+
     /// <summary>侧边栏导航选择变更</summary>
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
@@ -290,6 +302,14 @@ public sealed partial class MainWindow : Window
                     break;
             }
         }
+    }
+
+    /// <summary>从覆盖层里跳主页面：先收覆盖层，再带着参数导航（搜索结果点卡片用）</summary>
+    public void OpenMainPageFromOverlay(Type pageType, object? parameter)
+    {
+        CloseOverlay();
+        MainFrame.Navigate(pageType, parameter);
+        BackButton.IsEnabled = MainFrame.CanGoBack;
     }
 
     /// <summary>在主 Frame 打开页面（关闭覆盖层）</summary>
@@ -337,7 +357,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>在覆盖层打开页面（搜索、登录、用户空间）</summary>
-    public void OpenOverlay(Type pageType)
+    public void OpenOverlay(Type pageType, object? parameter = null)
     {
         // 小窗口下卡片要跟着缩，不能按 880 硬撑
         double availableWidth = MainGrid.ActualWidth > 0 ? MainGrid.ActualWidth : 1200;
@@ -347,8 +367,10 @@ public sealed partial class MainWindow : Window
         OverlayCard.MaxHeight = Math.Max(280, Math.Min(760, availableHeight - 48));
 
         OverlayHost.Visibility = Visibility.Visible;
-        OverlayFrame.Navigate(pageType);
-        NavView.IsEnabled = false;
+        OverlayFrame.Navigate(pageType, parameter);
+
+        // 不再把 NavView 整体禁用：覆盖层挂在 ShellRoot 上，scrim 已经挡住下方交互，
+        // 禁用会让背景内容连同文字一起变灰，看起来很脏。
     }
 
     /// <summary>关闭覆盖层</summary>
@@ -360,8 +382,6 @@ public sealed partial class MainWindow : Window
 
         // 清空内容，避免下次打开沿用到旧页面状态
         if (OverlayFrame.Content is not null) OverlayFrame.Content = null;
-
-        NavView.IsEnabled = true;
     }
 
     private void OverlayScrim_Tapped(object sender, TappedRoutedEventArgs e)
@@ -397,7 +417,8 @@ public sealed partial class MainWindow : Window
     {
         if (!string.IsNullOrWhiteSpace(args.QueryText))
         {
-            OpenOverlay(typeof(SearchPage));
+            SearchBox.Text = string.Empty;
+            OpenOverlay(typeof(SearchPage), args.QueryText.Trim());
         }
     }
 

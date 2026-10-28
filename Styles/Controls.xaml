@@ -21,10 +21,8 @@
         <Setter Property="MinHeight" Value="32" />
     </Style>
 
-    <Style x:Key="AccentButtonStyle" TargetType="Button">
-        <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-        <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-        <Setter Property="BorderThickness" Value="0" />
+    <!-- 基于 WinUI 内置 AccentButtonStyle：自己重写 Background 会被内置 VisualState 覆盖，只能 BasedOn -->
+    <Style x:Key="AppAccentButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
         <Setter Property="CornerRadius" Value="{StaticResource RadiusButton}" />
         <Setter Property="Padding" Value="12,6" />
         <Setter Property="MinHeight" Value="32" />

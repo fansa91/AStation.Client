@@ -18,6 +18,7 @@ public static class ServiceLocator
     private static VideoDetailService? _videoDetail;
     private static LivePlayService? _livePlay;
     private static RelatedService? _related;
+    private static SearchService? _search;
 
     public static ApiService Api =>
         _api ??= new ApiService();
@@ -57,4 +58,8 @@ public static class ServiceLocator
     /// <summary>相关视频（同频道内容流）</summary>
     public static RelatedService Related =>
         _related ??= new RelatedService(Api);
+
+    /// <summary>视频搜索</summary>
+    public static SearchService Search =>
+        _search ??= new SearchService(Api);
 }

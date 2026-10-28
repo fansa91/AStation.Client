@@ -5,38 +5,49 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Disabled"
+        HorizontalScrollMode="Disabled"
+        VerticalScrollBarVisibility="Auto">
         <Grid
+            x:Name="LoginGrid"
             MaxWidth="900"
             Padding="40,28,40,32"
             ColumnSpacing="32"
             RowSpacing="20"
-            HorizontalAlignment="Center"
+            HorizontalAlignment="Stretch"
             VerticalAlignment="Top">
 
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <!-- 窄屏时密码登录挪到第三行，两栏上下堆叠 -->
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="1*" MinWidth="220" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="380" />
+                <ColumnDefinition Width="1*" MinWidth="220" />
             </Grid.ColumnDefinitions>
 
             <!-- 页面标题（跨两栏） -->
             <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Spacing="4">
-                <TextBlock Text="登录" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="登录" Style="{StaticResource PageTitleTextStyle}" />
                 <TextBlock
                     Text="登录后可同步追番、收藏、观看历史，并使用评论与弹幕功能"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource CaptionWrapTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}"
                     TextWrapping="Wrap" />
             </StackPanel>
 
             <!-- ============ 左：扫码登录 ============ -->
-            <StackPanel Grid.Row="1" Grid.Column="0" Spacing="12" VerticalAlignment="Top">
-                <TextBlock Text="扫码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <StackPanel
+                x:Name="QrPanel"
+                Grid.Row="1"
+                Grid.Column="0"
+                Spacing="12"
+                VerticalAlignment="Top">
+                <TextBlock Text="扫码登录" Style="{StaticResource SectionTitleTextStyle}" />
 
                 <Border
                     Width="220"
@@ -65,13 +76,13 @@
                 <TextBlock
                     x:Name="QrStatusText"
                     Text="等待扫描…"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource CaptionWrapTextStyle}"
                     TextWrapping="Wrap"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}" />
 
                 <TextBlock
                     Text="使用 AcFun 手机客户端扫一扫，在手机上确认即可登录"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource CaptionWrapTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}"
                     TextWrapping="Wrap" />
 
@@ -79,7 +90,7 @@
                     <Button
                         x:Name="RefreshQrButton"
                         Content="刷新二维码"
-                        Style="{StaticResource AccentButtonStyle}"
+                        Style="{StaticResource AppAccentButtonStyle}"
                         Click="RefreshQrButton_Click" />
                     <Button
                         x:Name="CancelQrButton"
@@ -91,6 +102,7 @@
 
             <!-- ============ 中间竖分隔线 ============ -->
             <Rectangle
+                x:Name="Divider"
                 Grid.Row="1"
                 Grid.Column="1"
                 Width="1"
@@ -99,8 +111,13 @@
                 Opacity="0.2" />
 
             <!-- ============ 右：账号密码登录 ============ -->
-            <StackPanel Grid.Row="1" Grid.Column="2" Spacing="12" VerticalAlignment="Top">
-                <TextBlock Text="账号密码登录" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <StackPanel
+                x:Name="PasswordPanel"
+                Grid.Row="1"
+                Grid.Column="2"
+                Spacing="12"
+                VerticalAlignment="Top">
+                <TextBlock Text="账号密码登录" Style="{StaticResource SectionTitleTextStyle}" />
 
                 <TextBox
                     x:Name="UsernameBox"
@@ -147,14 +164,14 @@
                     Content="登录"
                     Margin="0,4,0,0"
                     HorizontalAlignment="Stretch"
-                    Style="{StaticResource AccentButtonStyle}"
+                    Style="{StaticResource AppAccentButtonStyle}"
                     Click="SignInButton_Click" />
 
                 <TextBlock
                     x:Name="LoginResultText"
                     Visibility="Collapsed"
                     TextWrapping="Wrap"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource CaptionWrapTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}" />
             </StackPanel>
         </Grid>

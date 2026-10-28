@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:AStation_Client.Controls"
     xmlns:models="using:AStation_Client.Models"
     mc:Ignorable="d">
 
@@ -22,7 +23,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Style="{StaticResource TitleTextBlockStyle}" Text="排行榜" />
+            <TextBlock Grid.Column="0" Style="{StaticResource PageTitleTextStyle}" Text="排行榜" />
             <Button
                 Grid.Column="1"
                 Content="刷新"
@@ -33,7 +34,7 @@
 
         <!-- 当前榜单说明 -->
         <StackPanel Grid.Row="1" Spacing="4">
-            <TextBlock x:Name="SectionTitle" Text="全站 · 日榜" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="SectionTitle" Text="全站 · 日榜" Style="{StaticResource SectionTitleTextStyle}" />
             <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -50,7 +51,7 @@
                 <TextBlock
                     Grid.Column="1"
                     x:Name="HintText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource MetaTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}"
                     TextTrimming="CharacterEllipsis" />
             </Grid>
@@ -77,6 +78,7 @@
         </ScrollViewer>
 
         <!-- 榜单：行高统一 76，标题 2 行 + 作者/频道/互动一行，x:Bind 编译期绑定 -->
+        <Grid Grid.Row="4">
         <ListView
             x:Name="RankList"
             Grid.Row="4"
@@ -171,5 +173,11 @@
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+
+            <!-- 加载 / 空 / 失败统一三态 -->
+            <controls:StatePanel
+                x:Name="RankState"
+                ActionClick="RankState_ActionClick" />
+        </Grid>
     </Grid>
 </Page>

@@ -22,7 +22,7 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Style="{StaticResource TitleTextBlockStyle}" Text="直播" />
+            <TextBlock Grid.Column="0" Style="{StaticResource PageTitleTextStyle}" Text="直播" />
             <Button
                 Grid.Column="1"
                 Content="刷新"
@@ -33,7 +33,7 @@
 
         <!-- 副标题 + 统计提示 -->
         <StackPanel Grid.Row="1" Spacing="4">
-            <TextBlock x:Name="SectionTitle" Text="正在直播" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock x:Name="SectionTitle" Text="正在直播" Style="{StaticResource SectionTitleTextStyle}" />
             <Grid ColumnSpacing="10">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -50,7 +50,7 @@
                 <TextBlock
                     Grid.Column="1"
                     x:Name="HintText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource MetaTextStyle}"
                     Foreground="{StaticResource TextFillColorSecondaryBrush}"
                     TextTrimming="CharacterEllipsis" />
             </Grid>
@@ -70,7 +70,8 @@
         </ScrollViewer>
 
         <!-- 直播卡片流：与视频 / 番剧共用 MediaCard，只把封面角标换成 LIVE + 在线人数 -->
-        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
+        <Grid Grid.Row="3">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollMode="Disabled" HorizontalScrollBarVisibility="Disabled">
             <ItemsRepeater x:Name="LiveList">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout
@@ -96,5 +97,11 @@
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
         </ScrollViewer>
+
+            <!-- 加载 / 空 / 失败统一三态 -->
+            <controls:StatePanel
+                x:Name="LiveState"
+                ActionClick="LiveState_ActionClick" />
+        </Grid>
     </Grid>
 </Page>

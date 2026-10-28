@@ -2,35 +2,83 @@
     x:Class="AStation_Client.Pages.Overlay.SearchPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:AStation_Client.Controls"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatible/2006">
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:AStation_Client.Models"
+    mc:Ignorable="d">
 
-    <Grid Padding="24,16,24,16" RowSpacing="20">
+    <!-- 覆盖层里的搜索页：宽度由 OverlayCard 给（最宽 880），这里只做纵向分配 -->
+    <Grid Padding="24,18,24,18" RowSpacing="14">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="搜索" />
+        <TextBlock Style="{StaticResource PageTitleTextStyle}" Text="搜索" />
 
-        <StackPanel Grid.Row="1" Spacing="16">
-            <AutoSuggestBox
-                x:Name="SearchInput"
-                PlaceholderText="输入关键词搜索视频、用户、番剧"
-                QueryIcon="Find"
-                MinWidth="400" />
+        <AutoSuggestBox
+            x:Name="SearchInput"
+            Grid.Row="1"
+            PlaceholderText="搜索视频（回车开始）"
+            QueryIcon="Find"
+            QuerySubmitted="SearchInput_QuerySubmitted"
+            TextChanged="SearchInput_TextChanged" />
 
-            <TextBlock Text="搜索结果" Style="{StaticResource SubtitleTextBlockStyle}" />
-            <ListView x:Name="ResultList" SelectionMode="None" ItemContainerStyle="{StaticResource ListViewItemCardStyle}">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="{Binding Title}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Author}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{StaticResource TextFillColorSecondaryBrush}" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-        </StackPanel>
+        <!-- 结果条数 / 说明；空态时整行收起 -->
+        <TextBlock
+            x:Name="HintText"
+            Grid.Row="2"
+            Style="{StaticResource MetaTextStyle}"
+            Visibility="Collapsed"
+            TextWrapping="Wrap" />
+
+        <Grid Grid.Row="3">
+            <ScrollViewer
+                x:Name="ResultScroll"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <ItemsRepeater x:Name="ResultList">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            ItemsStretch="Fill"
+                            MinColumnSpacing="12"
+                            MinItemHeight="196"
+                            MinItemWidth="150"
+                            MinRowSpacing="16" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:VideoItem">
+                            <controls:MediaCard
+                                Click="ResultCard_Click"
+                                Cover="{x:Bind Thumbnail}"
+                                Meta="{x:Bind Author}"
+                                Payload="{x:Bind ResourceId}"
+                                Title="{x:Bind Title}"
+                                TopRightBadge="{x:Bind Duration}" />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollViewer>
+
+            <!-- 加载 / 空 / 失败统一三态（不顶动页面布局） -->
+            <controls:StatePanel
+                x:Name="SearchState"
+                ActionClick="SearchState_ActionClick" />
+        </Grid>
+
+        <Button
+            x:Name="LoadMoreButton"
+            Grid.Row="4"
+            Padding="16,5"
+            HorizontalAlignment="Center"
+            Click="LoadMore_Click"
+            Content="加载更多"
+            FontSize="12"
+            Visibility="Collapsed" />
     </Grid>
 </Page>

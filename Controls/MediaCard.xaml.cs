@@ -39,7 +39,7 @@ public sealed partial class MediaCard : UserControl
         set => SetValue(SubtitleProperty, value);
     }
     public static readonly DependencyProperty SubtitleProperty =
-        DependencyProperty.Register(nameof(Subtitle), typeof(string), typeof(MediaCard), new PropertyMetadata(string.Empty));
+        DependencyProperty.Register(nameof(Subtitle), typeof(string), typeof(MediaCard), new PropertyMetadata(string.Empty, OnMetaChanged));
 
     /// <summary>第二段元信息：播放量 / 更新时间</summary>
     public string Meta
@@ -114,10 +114,20 @@ public sealed partial class MediaCard : UserControl
 
     private static void OnMetaChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        var card = (MediaCard)d;
-        card.MetaDot.Visibility = string.IsNullOrWhiteSpace(e.NewValue as string)
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        ((MediaCard)d).UpdateMetaRow();
+    }
+
+    /// <summary>
+    /// 副标题和元信息只有「两段都在」时才插分隔点，否则会出现「· 作者」这种前导点。
+    /// </summary>
+    private void UpdateMetaRow()
+    {
+        bool hasSubtitle = !string.IsNullOrWhiteSpace(Subtitle);
+        bool hasMeta = !string.IsNullOrWhiteSpace(Meta);
+
+        MetaDot.Visibility = hasSubtitle && hasMeta ? Visibility.Visible : Visibility.Collapsed;
+        MetaText.Visibility = hasMeta ? Visibility.Visible : Visibility.Collapsed;
+        SubtitleText.Visibility = hasSubtitle ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static void OnTopRightBadgeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

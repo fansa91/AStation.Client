@@ -12,13 +12,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Style="{StaticResource TitleTextBlockStyle}" Text="频道分区" />
+        <TextBlock Grid.Row="0" Style="{StaticResource PageTitleTextStyle}" Text="频道分区" />
 
         <StackPanel Grid.Row="1" Spacing="4">
-            <TextBlock Text="热门频道" Style="{StaticResource SubtitleTextBlockStyle}" />
+            <TextBlock Text="热门频道" Style="{StaticResource SectionTitleTextStyle}" />
             <TextBlock
                 x:Name="HintText"
-                Style="{StaticResource CaptionTextBlockStyle}"
+                Style="{StaticResource MetaTextStyle}"
                 Foreground="{StaticResource TextFillColorSecondaryBrush}"
                 Visibility="Collapsed" />
         </StackPanel>

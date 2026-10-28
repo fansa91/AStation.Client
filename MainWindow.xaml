@@ -147,6 +147,7 @@
             IsBackButtonVisible="Collapsed"
             IsPaneToggleButtonVisible="False"
             IsSettingsVisible="False"
+            ItemInvoked="NavView_ItemInvoked"
             SelectionChanged="NavView_SelectionChanged"
             Style="{StaticResource NavigationViewStyle}">
             <NavigationView.MenuItems>
@@ -226,33 +227,39 @@
                 <Grid x:Name="ContentHost" HorizontalAlignment="Stretch">
                     <Frame x:Name="MainFrame" />
                 </Grid>
-
-                <!-- 覆盖层壳：scrim + 卡片，搜索 / 登录 / 用户空间共用 -->
-                <Grid x:Name="OverlayHost" Visibility="Collapsed">
-                    <Grid.KeyboardAccelerators>
-                        <KeyboardAccelerator Invoked="OverlayEscape_Invoked" Key="Escape" />
-                    </Grid.KeyboardAccelerators>
-
-                    <Border
-                        x:Name="OverlayScrim"
-                        Background="{ThemeResource AppScrimBrush}"
-                        Tapped="OverlayScrim_Tapped" />
-
-                    <Border
-                        x:Name="OverlayCard"
-                        MaxWidth="880"
-                        MaxHeight="760"
-                        Margin="24"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                        <Frame x:Name="OverlayFrame" />
-                    </Border>
-                </Grid>
             </Grid>
         </NavigationView>
+
+        <!-- 覆盖层壳：scrim + 卡片。挂在 ShellRoot 上（不是 NavView 里），
+             否则 NavView.IsEnabled=false 会把覆盖层里的控件一起变灰 -->
+        <Grid
+            x:Name="OverlayHost"
+            Grid.RowSpan="2"
+            Canvas.ZIndex="10"
+            Visibility="Collapsed">
+            <Grid.KeyboardAccelerators>
+                <KeyboardAccelerator Invoked="OverlayEscape_Invoked" Key="Escape" />
+            </Grid.KeyboardAccelerators>
+
+            <Border
+                x:Name="OverlayScrim"
+                Background="{ThemeResource AppScrimBrush}"
+                Tapped="OverlayScrim_Tapped" />
+
+            <Border
+                x:Name="OverlayCard"
+                MaxWidth="880"
+                MaxHeight="760"
+                MinHeight="240"
+                Margin="24"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+                <Frame x:Name="OverlayFrame" />
+            </Border>
+        </Grid>
     </Grid>
 </Window>

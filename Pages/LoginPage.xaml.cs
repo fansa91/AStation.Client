@@ -23,15 +23,65 @@ public sealed partial class LoginPage : Page
     // 扫码轮询连续失败计数（服务端签名校验失败时优雅退出，而不是无声空转）
     private int _pollFailCount;
 
+    /// <summary>页面宽度窄于此值时两栏改为上下堆叠（覆盖层里可用宽度本来就比窗口小，不能按 900 判）</summary>
+    private const double BreakpointStack = 700;
+
+    private bool? _stacked;
+
     public LoginPage()
     {
         InitializeComponent();
+        SizeChanged += (_, e) => UpdateResponsiveLayout(e.NewSize.Width);
+        Loaded += (_, _) => UpdateResponsiveLayout(ActualWidth);
+    }
+
+    /// <summary>宽屏左右分栏（扫码 | 密码），窄屏上下堆叠并收起中间分隔线</summary>
+    private void UpdateResponsiveLayout(double width)
+    {
+        if (width <= 0) return;
+
+        bool stacked = width < BreakpointStack;
+        if (_stacked == stacked) return;
+        _stacked = stacked;
+
+        LoginGrid.Padding = stacked ? new Thickness(20, 20, 20, 24) : new Thickness(40, 28, 40, 32);
+        LoginGrid.ColumnSpacing = stacked ? 0 : 32;
+        Divider.Visibility = stacked ? Visibility.Collapsed : Visibility.Visible;
+
+        if (stacked)
+        {
+            Grid.SetRow(QrPanel, 1);
+            Grid.SetColumn(QrPanel, 0);
+            Grid.SetColumnSpan(QrPanel, 3);
+
+            Grid.SetRow(PasswordPanel, 2);
+            Grid.SetColumn(PasswordPanel, 0);
+            Grid.SetColumnSpan(PasswordPanel, 3);
+        }
+        else
+        {
+            Grid.SetRow(QrPanel, 1);
+            Grid.SetColumn(QrPanel, 0);
+            Grid.SetColumnSpan(QrPanel, 1);
+
+            Grid.SetRow(PasswordPanel, 1);
+            Grid.SetColumn(PasswordPanel, 2);
+            Grid.SetColumnSpan(PasswordPanel, 1);
+        }
     }
 
     protected override async void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         await StartQrLoginAsync();
+    }
+
+    /// <summary>离开页面必须停轮询，否则覆盖层关掉后计时器还在后台跑</summary>
+    protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+        _pollTimer?.Stop();
+        _pollTimer = null;
     }
 
     #region 扫码登录

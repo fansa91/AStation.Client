@@ -41,6 +41,11 @@ public sealed partial class LivePage : Page
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
 
+        if (Items.Count == 0)
+        {
+            LiveState.ShowLoading("正在拉取直播间…");
+        }
+
         LiveChannelResult? result = null;
         try
         {
@@ -102,7 +107,27 @@ public sealed partial class LivePage : Page
                 ? $"共 {total} 个在播房间，已加载 {Items.Count} 个"
                 : $"共 {Items.Count} 个正在直播的房间";
         }
-        HintText.Visibility = Visibility.Visible;
+        // 空态由状态面板接手，条数说明就不必再显示了
+        HintText.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+
+        if (empty)
+        {
+            LiveState.ShowEmpty(
+                _currentFilterId == 0 ? "暂时拿不到直播列表" : "该分类没有主播在线",
+                _currentFilterId == 0
+                    ? "直播站页面结构可能已变更，或网络不可达。"
+                    : "换个分类看看，或者稍后刷新。",
+                actionText: "重试");
+        }
+        else
+        {
+            LiveState.Hide();
+        }
+    }
+
+    private async void LiveState_ActionClick(object? sender, EventArgs e)
+    {
+        await LoadDataAsync();
     }
 
     private string CurrentCategoryName()
