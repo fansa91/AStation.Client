@@ -75,20 +75,23 @@ jobs:
       # WindowsAppSDKSelfContained 始终为 true —— Windows App Runtime 不打进系统，
       # 否则用户还得单独装对应版本的 WinAppRuntime 框架包，装错版本会直接启动崩溃。
       - name: Publish
+        id: publish
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           SELF_CONTAINED: ${{ matrix.self_contained }}
         run: |
           $outDir = Join-Path $env:RUNNER_TEMP "publish-${{ matrix.flavor }}"
+          # 程序集版本只取主版本号部分（1.2.3-beta.1 → 1.2.3），预发布标记只进 InformationalVersion
+          $asmVersion = ($env:VERSION -split '[-+]')[0]
           dotnet publish AStation.Client.csproj `
             -c Release `
             -r win-x64 `
             --self-contained $env:SELF_CONTAINED `
             -p:Platform=x64 `
             -p:Version=$env:VERSION `
-            -p:AssemblyVersion=$($env:VERSION.Split('-')[0]) `
-            -p:FileVersion=$($env:VERSION.Split('-')[0]) `
+            -p:AssemblyVersion=$asmVersion `
+            -p:FileVersion=$asmVersion `
             -p:InformationalVersion=$env:VERSION `
             -p:WindowsAppSDKSelfContained=true `
             -p:WindowsPackageType=None `
@@ -103,10 +106,10 @@ jobs:
           }
           "out_dir=$outDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "产物：$outDir（$((Get-ChildItem $outDir -File).Count) 个文件，$([math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)) MB）"
-        id: publish
 
       # ── 打包：包名 = 应用名-版本号-运行时-构建类型 ──
       - name: Package
+        id: package
         shell: pwsh
         env:
           VERSION: ${{ steps.ver.outputs.version }}
@@ -116,31 +119,25 @@ jobs:
           $zipPath = Join-Path $env:GITHUB_WORKSPACE $zipName
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-          # 优先用 7z（几百 MB 的目录比 Compress-Archive 快一个数量级），没有则退回 tar/Compress-Archive
-          $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
-          if (-not $sevenZip) {
-            $candidate = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
-            if (Test-Path $candidate) { $sevenZip = Get-Item $candidate }
+          # 用 .NET 的 ZipFile 而不是 Compress-Archive：后者对上千个文件逐个调用，
+          # 慢一个数量级。pwsh 7 里 ZipFile 已在共享框架中，无需 Add-Type
+          try {
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+              $env:OUT_DIR,
+              $zipPath,
+              [System.IO.Compression.CompressionLevel]::Optimal,
+              $false)
+          } catch {
+            Write-Warning "ZipFile 打包失败，回退 Compress-Archive：$_"
+            Compress-Archive -Path (Join-Path $env:OUT_DIR '*') -DestinationPath $zipPath -CompressionLevel Optimal
           }
 
-          Push-Location $env:OUT_DIR
-          try {
-            if ($sevenZip) {
-              $exe = if ($sevenZip.Source) { $sevenZip.Source } else { $sevenZip.FullName }
-              & $exe a -tzip -mx=5 -mmt=on $zipPath '*'
-            } else {
-              tar -a -c -f $zipPath '*'
-            }
-            if ($LASTEXITCODE -ne 0) { throw "压缩失败（exit $LASTEXITCODE）" }
-          } finally {
-            Pop-Location
-          }
+          if (-not (Test-Path $zipPath)) { throw "压缩失败：$zipName 未生成" }
 
           $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
           Write-Host "打包完成：$zipName（$sizeMb MB）"
           "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "zip_size=$sizeMb"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-        id: package
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
