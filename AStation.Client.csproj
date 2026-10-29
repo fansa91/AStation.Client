@@ -17,7 +17,7 @@
 
     <!-- 版本号默认值（README 里写的 0.1 对应这里）。
          CI 按 git tag 覆盖：-p:Version=<tag 去掉 v> -->
-    <Version>0.1.0</Version>
+    <Version>0.1.2</Version>
     <!-- 本地构建的 ProductVersion 不要带 +commitHash 尾巴，发布包里版本号干净一些 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>AStation.Client</AssemblyTitle>
