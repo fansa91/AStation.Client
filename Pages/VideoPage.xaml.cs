@@ -66,6 +66,8 @@ public sealed partial class VideoPage : Page
     private int _commentTotalPage;
     private long _commentTotalCount;
     private bool _commentsLoaded;
+    private bool _commentLoading;
+    private string _commentCountText = string.Empty;
 
     /// <summary>清晰度 / 线路两个 Flyout 的列表实例（内容挂在共用播放器控件里）</summary>
     private ListView _qualityList = null!;
@@ -167,7 +169,8 @@ public sealed partial class VideoPage : Page
             SidePanel.Height = 340;
 
             // 页面整体滚动时，评论列表自己给个高度，避免 50 条评论把页面拉到很长
-            CommentList.MaxHeight = 420;
+            // （此时侧栏是固定 340 高的卡片，减去分页行和加载更多按钮，列表留 280）
+            CommentList.MaxHeight = 280;
         }
         else
         {
@@ -307,7 +310,7 @@ public sealed partial class VideoPage : Page
         Comments.Clear();
         RelatedVideos.Clear();
         LoadMoreCommentButton.Visibility = Visibility.Collapsed;
-        CommentCountText.Text = string.Empty;
+        _commentCountText = string.Empty;
         CommentState.ShowLoading("正在加载评论…");
 
         Playlist.Clear();
@@ -336,10 +339,11 @@ public sealed partial class VideoPage : Page
         UpdateEpisodeButtons();
 
         // 列表已填充，刷新右栏空状态与计数（否则会残留"没有分P信息"压在列表上）
-        SelectSideTab(0);
+        // 单P / 单集视频没得可选，默认落在「评论」上，右栏不至于一打开就是空的
+        SelectSideTab(Playlist.Count > 1 ? 0 : 2);
 
-        // 评论和相关视频与播放并行拉，不阻塞播放
-        _ = LoadCommentsAsync(append: false);
+        // 评论改成懒加载：只有真的切到「评论」分页才拉；相关视频仍然并行拉，不阻塞播放
+        if (CommentTab.IsChecked == true) _ = LoadCommentsAsync(append: false);
         _ = LoadRelatedAsync();
     }
 
@@ -919,22 +923,28 @@ public sealed partial class VideoPage : Page
 
     private void SideTab_Click(object sender, RoutedEventArgs e)
     {
-        SelectSideTab(ReferenceEquals(sender, RelatedTab) ? 1 : 0);
+        SelectSideTab(ReferenceEquals(sender, RelatedTab) ? 1 : ReferenceEquals(sender, CommentTab) ? 2 : 0);
     }
 
     private void SelectSideTab(int index)
     {
         PlaylistTab.IsChecked = index == 0;
+        CommentTab.IsChecked = index == 2;
         RelatedTab.IsChecked = index == 1;
 
         EpisodeList.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CommentView.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         RelatedList.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
 
         ListCountText.Text = index switch
         {
             1 => RelatedVideos.Count > 0 ? RelatedVideos.Count.ToString() : string.Empty,
+            2 => _commentCountText,
             _ => Playlist.Count.ToString()
         };
+
+        // 评论懒加载：第一次切到该分页才发请求
+        if (index == 2 && !_commentsLoaded && !_commentLoading) _ = LoadCommentsAsync(append: false);
 
         UpdateSideHint(index);
     }
@@ -942,6 +952,13 @@ public sealed partial class VideoPage : Page
     /// <summary>侧栏空态统一走 StatePanel（叠在列表上，不占布局）</summary>
     private void UpdateSideHint(int index)
     {
+        // 评论的三态在 CommentView 里由 CommentState 管，不共用侧栏的 SideState
+        if (index == 2)
+        {
+            SideState.Hide();
+            return;
+        }
+
         if (index == 0)
         {
             if (Playlist.Count > 0)
@@ -973,6 +990,22 @@ public sealed partial class VideoPage : Page
     // ───────────────────────────── 评论 ─────────────────────────────
 
     private async Task LoadCommentsAsync(bool append)
+    {
+        // 懒加载的首次触发和「加载更多」可能撞在一起，加闸门避免两次请求交叉写入列表
+        if (_commentLoading) return;
+        _commentLoading = true;
+
+        try
+        {
+            await LoadCommentsCoreAsync(append);
+        }
+        finally
+        {
+            _commentLoading = false;
+        }
+    }
+
+    private async Task LoadCommentsCoreAsync(bool append)
     {
         // 番剧的评论 sourceType 与视频不同，实测传 2 拿不到就退回 3 再试
         int sourceType = _isBangumi ? 2 : 3;
@@ -1021,9 +1054,11 @@ public sealed partial class VideoPage : Page
     /// <summary>评论区三态：加载中 / 空 / 有内容</summary>
     private void UpdateCommentState()
     {
-        CommentCountText.Text = _commentTotalCount > 0
+        _commentCountText = _commentTotalCount > 0
             ? $"共 {VideoDetailService.FormatCount(_commentTotalCount)} 条"
             : (Comments.Count > 0 ? $"{Comments.Count} 条" : string.Empty);
+
+        if (CommentTab.IsChecked == true) ListCountText.Text = _commentCountText;
 
         if (!_commentsLoaded)
         {

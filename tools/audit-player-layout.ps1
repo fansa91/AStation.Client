@@ -204,10 +204,39 @@ foreach ($size in @(@(1600, 960, 'vod-1600'), @(1440, 900, 'vod-1440'), @(1200, 
     Log ("    控制条按钮：播放暂停=" + $(if (Find-El '播放暂停' 'Button') { '在' } else { '缺' }) +
          " 倍速=" + $(if (Find-El '倍速' 'Button') { '在' } else { '缺' }) +
          " 全屏=" + $(if (Find-El '全屏' 'Button') { '在' } else { '缺' }))
-    Log ("    评论标题：" + $(if (Find-El '评论' 'Text') { '在' } else { '缺' }) +
-         " 选集分页=" + $(if (Find-El '选集' 'Button') { '在' } else { '缺' }) +
-         " 相关分页=" + $(if (Find-El '相关' 'Button') { '在' } else { '缺' }))
+    Log ("    右栏分页：选集=" + $(if (Find-El '选集' 'Button') { '在' } else { '缺' }) +
+         " 评论=" + $(if (Find-El '评论' 'Button') { '在' } else { '缺' }) +
+         " 相关=" + $(if (Find-El '相关' 'Button') { '在' } else { '缺' }))
     Shot ($size[2] + '.png')
+}
+
+# ───────────────────────── 右栏评论分页 ─────────────────────────
+Log '--- 右栏评论分页 ---'
+Resize 1440 900
+$cm = Find-El '评论' 'Button'
+if ($cm) {
+    Invoke-El $cm | Out-Null
+    $items = @()
+    for ($i = 0; $i -lt 24; $i++) {
+        Start-Sleep -Milliseconds 500
+        $items = @(Get-All | Where-Object { $_.Current.ControlType.ProgrammaticName -eq 'ControlType.ListItem' })
+        if ($items.Count -gt 0) { break }
+        if (Find-El '加载更多评论' 'Button') { break }
+    }
+    Log ("    评论列表：" + $(if ($items.Count -gt 0) { "已加载（$($items.Count) 条）" } else { '空 / 加载失败' }) +
+         " 加载更多=" + $(if (Find-El '加载更多评论' 'Button') { '在' } else { '无（不足一页）' }))
+    Shot 'vod-comment-tab.png'
+
+    # 切回选集，确认互斥：评论视图应撤下
+    $ep = Find-El '选集' 'Button'
+    if ($ep) {
+        Invoke-El $ep | Out-Null
+        Start-Sleep -Milliseconds 800
+        $left = @(Get-All | Where-Object { $_.Current.ControlType.ProgrammaticName -eq 'ControlType.ListItem' })
+        Log ("    切回选集后 ListItem 数=$($left.Count)（应只剩分P 项）")
+    }
+} else {
+    Log 'WARN: 找不到评论分页按钮'
 }
 
 # 全屏

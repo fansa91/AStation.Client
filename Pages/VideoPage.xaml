@@ -41,8 +41,8 @@
 
     <!--
         播放页骨架（点播 / 直播共用同一套空间逻辑）
-          左列（*）：Row0 播放器（16:9）+ Row1「信息 + 评论」
-          右列（340~380）：选集 / 相关，贯通两行、与播放器等高的整条侧栏
+          左列（*）：Row0 播放器（16:9）+ Row1「视频信息」
+          右列（340~380）：选集 / 评论 / 相关，贯通两行、与播放器等高的整条侧栏
           页面本身不滚动，评论与列表各自滚动；窄屏把侧栏折到最下方；
           全屏时右列宽度与内容行一起归零，播放器独占整个窗口
     -->
@@ -95,20 +95,13 @@
                     <RowDefinition x:Name="StackedRow" Height="0" />
                 </Grid.RowDefinitions>
 
-                <!-- ═══════════ 左列：视频信息（固定）+ 评论（滚动） ═══════════ -->
+                <!-- ═══════════ 左列：视频信息（评论已移到右栏第三个分页） ═══════════ -->
                 <Grid
                     x:Name="MainColumn"
                     Grid.Row="0"
-                    Grid.RowSpan="2"
-                    RowSpacing="10">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
+                    Grid.RowSpan="2">
                     <StackPanel
                         x:Name="InfoPanel"
-                        Grid.Row="0"
                         Spacing="10">
                         <TextBlock
                             x:Name="TitleText"
@@ -203,249 +196,6 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- 评论：移到播放器下方通栏，长评论可读性远好于 340 侧栏 -->
-                    <Grid
-                        x:Name="CommentSection"
-                        Grid.Row="1"
-                        RowSpacing="6">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Grid Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock
-                                FontSize="15"
-                                FontWeight="SemiBold"
-                                Text="评论" />
-                            <TextBlock
-                                x:Name="CommentCountText"
-                                Grid.Column="1"
-                                Margin="8,0,0,0"
-                                VerticalAlignment="Center"
-                                Style="{StaticResource MetaTextStyle}" />
-                            <ProgressRing
-                                x:Name="CommentLoadingRing"
-                                Grid.Column="2"
-                                Width="16"
-                                Height="16"
-                                IsActive="False"
-                                Visibility="Collapsed" />
-                        </Grid>
-
-                        <Grid Grid.Row="1">
-                            <ListView
-                                x:Name="CommentList"
-                                SelectionMode="None">
-                                <ListView.ItemContainerStyle>
-                                    <Style TargetType="ListViewItem">
-                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                        <Setter Property="Padding" Value="0,8" />
-                                        <Setter Property="MinHeight" Value="0" />
-                                        <Setter Property="CornerRadius" Value="6" />
-                                    </Style>
-                                </ListView.ItemContainerStyle>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate x:DataType="svc:CommentItem">
-                                        <Grid ColumnSpacing="10">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-
-                                            <PersonPicture
-                                                Width="32"
-                                                Height="32"
-                                                VerticalAlignment="Top"
-                                                DisplayName="{x:Bind UserName}"
-                                                ProfilePicture="{x:Bind Avatar, Converter={StaticResource StringToImageSourceConverter}}" />
-
-                                            <StackPanel Grid.Column="1" Spacing="3">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock
-                                                        FontSize="12"
-                                                        FontWeight="SemiBold"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        MaxLines="1"
-                                                        Text="{x:Bind UserName}"
-                                                        TextTrimming="CharacterEllipsis" />
-                                                    <Border
-                                                        Padding="4,0"
-                                                        VerticalAlignment="Center"
-                                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                        CornerRadius="3"
-                                                        Visibility="{x:Bind IsUp, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <TextBlock
-                                                            FontSize="9"
-                                                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                                            Text="UP" />
-                                                    </Border>
-                                                    <Border
-                                                        Padding="4,0"
-                                                        VerticalAlignment="Center"
-                                                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                        CornerRadius="3"
-                                                        Visibility="{x:Bind IsSticky, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                        <TextBlock FontSize="9" Text="置顶" />
-                                                    </Border>
-                                                </StackPanel>
-
-                                                <TextBlock
-                                                    FontSize="13"
-                                                    IsTextSelectionEnabled="True"
-                                                    MaxLines="12"
-                                                    Text="{x:Bind Content}"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    TextWrapping="Wrap" />
-
-                                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                                    <TextBlock
-                                                        FontSize="11"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        Text="{x:Bind PostDate}" />
-                                                    <TextBlock
-                                                        FontSize="11"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        Text="{x:Bind LikeCountText}" />
-                                                    <TextBlock
-                                                        FontSize="11"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        Text="{x:Bind SubCommentText}"
-                                                        Visibility="{x:Bind ShowPlainSubText, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                </StackPanel>
-
-                                                <!-- 展开 / 收起楼中楼 -->
-                                                <Button
-                                                    Margin="0,1,0,0"
-                                                    Padding="8,2"
-                                                    HorizontalAlignment="Left"
-                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
-                                                    BorderThickness="0"
-                                                    CornerRadius="4"
-                                                    Visibility="{x:Bind CanExpand, Converter={StaticResource BoolToVisibilityConverter}}"
-                                                    Click="ReplyToggle_Click">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <TextBlock
-                                                            FontSize="11"
-                                                            Text="{x:Bind ReplyToggleText, Mode=OneWay}" />
-                                                        <FontIcon
-                                                            FontSize="8"
-                                                            Glyph="{x:Bind ReplyToggleGlyph, Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </Button>
-
-                                                <!-- 楼中楼内容 -->
-                                                <StackPanel
-                                                    Margin="0,4,0,0"
-                                                    Spacing="6"
-                                                    Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                    <ItemsControl ItemsSource="{x:Bind Replies}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate x:DataType="svc:CommentItem">
-                                                                <Grid
-                                                                    Margin="0,0,0,8"
-                                                                    Padding="10,0,0,0"
-                                                                    BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
-                                                                    BorderThickness="2,0,0,0"
-                                                                    ColumnSpacing="7">
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="Auto" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-
-                                                                    <PersonPicture
-                                                                        Width="22"
-                                                                        Height="22"
-                                                                        VerticalAlignment="Top"
-                                                                        DisplayName="{x:Bind UserName}"
-                                                                        ProfilePicture="{x:Bind Avatar, Converter={StaticResource StringToImageSourceConverter}}" />
-
-                                                                    <StackPanel Grid.Column="1" Spacing="2">
-                                                                        <StackPanel Orientation="Horizontal" Spacing="5">
-                                                                            <TextBlock
-                                                                                FontSize="11"
-                                                                                FontWeight="SemiBold"
-                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                                MaxLines="1"
-                                                                                Text="{x:Bind UserName}"
-                                                                                TextTrimming="CharacterEllipsis" />
-                                                                            <Border
-                                                                                Padding="4,0"
-                                                                                VerticalAlignment="Center"
-                                                                                Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                                                CornerRadius="3"
-                                                                                Visibility="{x:Bind IsUp, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                                                <TextBlock
-                                                                                    FontSize="9"
-                                                                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                                                                    Text="UP" />
-                                                                            </Border>
-                                                                        </StackPanel>
-
-                                                                        <TextBlock
-                                                                            FontSize="12"
-                                                                            IsTextSelectionEnabled="True"
-                                                                            MaxLines="8"
-                                                                            Text="{x:Bind Content}"
-                                                                            TextTrimming="CharacterEllipsis"
-                                                                            TextWrapping="Wrap" />
-
-                                                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                            <TextBlock
-                                                                                FontSize="10"
-                                                                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                                                Text="{x:Bind ReplyToText}"
-                                                                                Visibility="{x:Bind HasReplyTo, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                                            <TextBlock
-                                                                                FontSize="10"
-                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                                Text="{x:Bind PostDate}" />
-                                                                            <TextBlock
-                                                                                FontSize="10"
-                                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                                Text="{x:Bind LikeCountText}" />
-                                                                        </StackPanel>
-                                                                    </StackPanel>
-                                                                </Grid>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
-
-                                                    <!-- 接口每个主楼只下发前 3 条，差额提示一下 -->
-                                                    <TextBlock
-                                                        FontSize="10"
-                                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                                        Text="{x:Bind HiddenReplyText}"
-                                                        Visibility="{x:Bind HasHiddenReplies, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                                </StackPanel>
-                                            </StackPanel>
-                                        </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-
-                            <!-- 统一三态：加载 / 空 / 失败 -->
-                            <controls:StatePanel
-                                x:Name="CommentState"
-                                ActionClick="CommentState_ActionClick" />
-                        </Grid>
-
-                        <Button
-                            x:Name="LoadMoreCommentButton"
-                            Grid.Row="2"
-                            Padding="16,5"
-                            HorizontalAlignment="Center"
-                            Click="LoadMoreCommentButton_Click"
-                            Content="加载更多评论"
-                            FontSize="12"
-                            Visibility="Collapsed" />
-                    </Grid>
                 </Grid>
 
             </Grid>
@@ -471,7 +221,9 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
@@ -483,20 +235,254 @@
                             IsChecked="True"
                             Style="{StaticResource SegmentTabButtonStyle}" />
                         <ToggleButton
-                            x:Name="RelatedTab"
+                            x:Name="CommentTab"
                             Grid.Column="1"
+                            AutomationProperties.Name="评论"
+                            Click="SideTab_Click"
+                            Content="评论"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                        <ToggleButton
+                            x:Name="RelatedTab"
+                            Grid.Column="2"
                             AutomationProperties.Name="相关"
                             Click="SideTab_Click"
                             Content="相关"
                             Style="{StaticResource SegmentTabButtonStyle}" />
                         <TextBlock
                             x:Name="ListCountText"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             VerticalAlignment="Center"
                             Style="{StaticResource MetaTextStyle}" />
+                        <ProgressRing
+                            x:Name="CommentLoadingRing"
+                            Grid.Column="5"
+                            Width="14"
+                            Height="14"
+                            Margin="4,0,0,0"
+                            VerticalAlignment="Center"
+                            IsActive="False"
+                            Visibility="Collapsed" />
                     </Grid>
 
                     <Grid Grid.Row="1">
+                <!-- 评论：右栏第三个分页，首次打开才拉数据 -->
+                <Grid
+                    x:Name="CommentView"
+                    Visibility="Collapsed"
+                    RowSpacing="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <ListView
+                            x:Name="CommentList"
+                            SelectionMode="None">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="Padding" Value="0,8" />
+                                    <Setter Property="MinHeight" Value="0" />
+                                    <Setter Property="CornerRadius" Value="6" />
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="svc:CommentItem">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <PersonPicture
+                                            Width="32"
+                                            Height="32"
+                                            VerticalAlignment="Top"
+                                            DisplayName="{x:Bind UserName}"
+                                            ProfilePicture="{x:Bind Avatar, Converter={StaticResource StringToImageSourceConverter}}" />
+
+                                        <StackPanel Grid.Column="1" Spacing="3">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    MaxLines="1"
+                                                    Text="{x:Bind UserName}"
+                                                    TextTrimming="CharacterEllipsis" />
+                                                <Border
+                                                    Padding="4,0"
+                                                    VerticalAlignment="Center"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    CornerRadius="3"
+                                                    Visibility="{x:Bind IsUp, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <TextBlock
+                                                        FontSize="9"
+                                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                        Text="UP" />
+                                                </Border>
+                                                <Border
+                                                    Padding="4,0"
+                                                    VerticalAlignment="Center"
+                                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                    CornerRadius="3"
+                                                    Visibility="{x:Bind IsSticky, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <TextBlock FontSize="9" Text="置顶" />
+                                                </Border>
+                                            </StackPanel>
+
+                                            <TextBlock
+                                                FontSize="13"
+                                                IsTextSelectionEnabled="True"
+                                                MaxLines="12"
+                                                Text="{x:Bind Content}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap" />
+
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind PostDate}" />
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind LikeCountText}" />
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind SubCommentText}"
+                                                    Visibility="{x:Bind ShowPlainSubText, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </StackPanel>
+
+                                            <!-- 展开 / 收起楼中楼 -->
+                                            <Button
+                                                Margin="0,1,0,0"
+                                                Padding="8,2"
+                                                HorizontalAlignment="Left"
+                                                Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                                BorderThickness="0"
+                                                CornerRadius="4"
+                                                Visibility="{x:Bind CanExpand, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                Click="ReplyToggle_Click">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <TextBlock
+                                                        FontSize="11"
+                                                        Text="{x:Bind ReplyToggleText, Mode=OneWay}" />
+                                                    <FontIcon
+                                                        FontSize="8"
+                                                        Glyph="{x:Bind ReplyToggleGlyph, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <!-- 楼中楼内容 -->
+                                            <StackPanel
+                                                Margin="0,4,0,0"
+                                                Spacing="6"
+                                                Visibility="{x:Bind IsExpanded, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <ItemsControl ItemsSource="{x:Bind Replies}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="svc:CommentItem">
+                                                            <Grid
+                                                                Margin="0,0,0,8"
+                                                                Padding="10,0,0,0"
+                                                                BorderBrush="{ThemeResource ControlStrongStrokeColorDefaultBrush}"
+                                                                BorderThickness="2,0,0,0"
+                                                                ColumnSpacing="7">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <PersonPicture
+                                                                    Width="22"
+                                                                    Height="22"
+                                                                    VerticalAlignment="Top"
+                                                                    DisplayName="{x:Bind UserName}"
+                                                                    ProfilePicture="{x:Bind Avatar, Converter={StaticResource StringToImageSourceConverter}}" />
+
+                                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                                    <StackPanel Orientation="Horizontal" Spacing="5">
+                                                                        <TextBlock
+                                                                            FontSize="11"
+                                                                            FontWeight="SemiBold"
+                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                            MaxLines="1"
+                                                                            Text="{x:Bind UserName}"
+                                                                            TextTrimming="CharacterEllipsis" />
+                                                                        <Border
+                                                                            Padding="4,0"
+                                                                            VerticalAlignment="Center"
+                                                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                                            CornerRadius="3"
+                                                                            Visibility="{x:Bind IsUp, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                                            <TextBlock
+                                                                                FontSize="9"
+                                                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                                Text="UP" />
+                                                                        </Border>
+                                                                    </StackPanel>
+
+                                                                    <TextBlock
+                                                                        FontSize="12"
+                                                                        IsTextSelectionEnabled="True"
+                                                                        MaxLines="8"
+                                                                        Text="{x:Bind Content}"
+                                                                        TextTrimming="CharacterEllipsis"
+                                                                        TextWrapping="Wrap" />
+
+                                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                        <TextBlock
+                                                                            FontSize="10"
+                                                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                                            Text="{x:Bind ReplyToText}"
+                                                                            Visibility="{x:Bind HasReplyTo, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                                                        <TextBlock
+                                                                            FontSize="10"
+                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                            Text="{x:Bind PostDate}" />
+                                                                        <TextBlock
+                                                                            FontSize="10"
+                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                            Text="{x:Bind LikeCountText}" />
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <!-- 接口每个主楼只下发前 3 条，差额提示一下 -->
+                                                <TextBlock
+                                                    FontSize="10"
+                                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                    Text="{x:Bind HiddenReplyText}"
+                                                    Visibility="{x:Bind HasHiddenReplies, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <!-- 统一三态：加载 / 空 / 失败 -->
+                        <controls:StatePanel
+                            x:Name="CommentState"
+                            ActionClick="CommentState_ActionClick" />
+                    </Grid>
+
+                    <Button
+                        x:Name="LoadMoreCommentButton"
+                        Grid.Row="1"
+                        Padding="16,5"
+                        HorizontalAlignment="Center"
+                        Click="LoadMoreCommentButton_Click"
+                        Content="加载更多评论"
+                        FontSize="12"
+                        Visibility="Collapsed" />
+                    </Grid>
+
                         <!-- 分P / 选集 -->
                         <ListView
                             x:Name="EpisodeList"
