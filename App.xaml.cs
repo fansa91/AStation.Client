@@ -49,6 +49,10 @@ public partial class App : Application
             _window = new MainWindow();
             MainWindowInstance = _window;
             _window.Activate();
+
+            // 表情字典在后台预热：评论可以等，但弹幕是「渲染一次就过」的，
+            // 等第一条弹幕出现时才去拉字典，那条弹幕里的表情就只能退成「[表情]」。
+            _ = AStation_Client.Services.EmoteCatalog.Shared.EnsureLoadedAsync();
         }
         catch (Exception ex)
         {

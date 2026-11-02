@@ -174,14 +174,12 @@
 
                         <!-- 简介：2 行截断 + 展开（高度变化只在左列内部，不推整页） -->
                         <StackPanel Spacing="2">
-                            <TextBlock
+                            <controls:UbbText
                                 x:Name="DescriptionText"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                IsTextSelectionEnabled="True"
                                 MaxLines="2"
-                                Text="暂无简介"
-                                TextTrimming="CharacterEllipsis"
-                                TextWrapping="Wrap" />
+                                FontSize="14"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="暂无简介" />
                             <Button
                                 x:Name="DescriptionToggle"
                                 Padding="0,2"
@@ -332,13 +330,10 @@
                                                 </Border>
                                             </StackPanel>
 
-                                            <TextBlock
-                                                FontSize="13"
-                                                IsTextSelectionEnabled="True"
+                                            <controls:UbbText
                                                 MaxLines="12"
-                                                Text="{x:Bind Content}"
-                                                TextTrimming="CharacterEllipsis"
-                                                TextWrapping="Wrap" />
+                                                FontSize="13"
+                                                Text="{x:Bind Content}" />
 
                                             <StackPanel Orientation="Horizontal" Spacing="10">
                                                 <TextBlock
@@ -424,13 +419,10 @@
                                                                         </Border>
                                                                     </StackPanel>
 
-                                                                    <TextBlock
-                                                                        FontSize="12"
-                                                                        IsTextSelectionEnabled="True"
+                                                                    <controls:UbbText
                                                                         MaxLines="8"
-                                                                        Text="{x:Bind Content}"
-                                                                        TextTrimming="CharacterEllipsis"
-                                                                        TextWrapping="Wrap" />
+                                                                        FontSize="12"
+                                                                        Text="{x:Bind Content}" />
 
                                                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                                                         <TextBlock

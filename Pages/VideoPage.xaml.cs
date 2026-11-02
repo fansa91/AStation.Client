@@ -1010,6 +1010,9 @@ public sealed partial class VideoPage : Page
         // 番剧的评论 sourceType 与视频不同，实测传 2 拿不到就退回 3 再试
         int sourceType = _isBangumi ? 2 : 3;
 
+        // 表情字典和评论并行拉：评论里表情码很常见，等第一条评论渲染完再去拿字典会有一段「[表情]」
+        _ = EmoteCatalog.Shared.EnsureLoadedAsync();
+
         if (!append)
         {
             CommentState.ShowLoading("正在加载评论…");

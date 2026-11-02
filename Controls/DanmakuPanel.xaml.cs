@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -78,19 +80,11 @@ public sealed partial class DanmakuPanel : UserControl
         double scale = Math.Clamp(canvasWidth / 1100.0, 0.6, 1.8);
         double size = Math.Clamp(fontSize * scale, 12, 40);
 
-        var textBlock = new TextBlock
-        {
-            Text = text,
-            FontSize = size,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = ParseColor(color),
-            IsHitTestVisible = false,
-            TextWrapping = TextWrapping.NoWrap
-        };
+        var element = BuildDanmakuElement(text, size, ParseColor(color));
 
-        textBlock.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        double textWidth = textBlock.DesiredSize.Width;
-        double textHeight = textBlock.DesiredSize.Height;
+        element.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        double textWidth = element.DesiredSize.Width;
+        double textHeight = element.DesiredSize.Height;
 
         double laneHeight = textHeight + 6;
 
@@ -102,11 +96,11 @@ public sealed partial class DanmakuPanel : UserControl
         int lane = _nextLane++ % laneCount;
 
         var transform = new TranslateTransform();
-        textBlock.RenderTransform = transform;
+        element.RenderTransform = transform;
 
         var entry = new ActiveDanmaku
         {
-            Element = textBlock,
+            Element = element,
             Transform = transform,
             Width = textWidth,
             IsFixed = mode is DanmakuMode.Top or DanmakuMode.Bottom,
@@ -119,14 +113,14 @@ public sealed partial class DanmakuPanel : UserControl
                 ? topInset + 8 + lane * laneHeight
                 : Math.Max(topInset + 8, canvasHeight - 8 - (lane + 1) * laneHeight);
 
-            Canvas.SetTop(textBlock, y);
+            Canvas.SetTop(element, y);
             entry.X = Math.Max(0, (canvasWidth - textWidth) / 2);
             entry.LifeLeft = 3.2;
             transform.X = entry.X;
         }
         else
         {
-            Canvas.SetTop(textBlock, topInset + 8 + lane * laneHeight);
+            Canvas.SetTop(element, topInset + 8 + lane * laneHeight);
 
             // 从右边缘外开始，完整穿出左边缘结束
             entry.X = canvasWidth + 8;
@@ -135,11 +129,77 @@ public sealed partial class DanmakuPanel : UserControl
             transform.X = entry.X;
         }
 
-        Canvas.SetLeft(textBlock, 0);
-        DanmakuCanvas.Children.Add(textBlock);
+        Canvas.SetLeft(element, 0);
+        DanmakuCanvas.Children.Add(element);
         _active.Add(entry);
 
         EnsureTicking();
+    }
+
+    /// <summary>
+    /// 构造一条弹幕的视觉元素。
+    /// 纯文字走 TextBlock（绝大多数弹幕，创建便宜、测量快）；
+    /// 带 <c>[emot=acfun,1738/]</c> 这类表情码时才用 RichTextBlock 组装富文本，
+    /// 否则表情码会原样显示成一串方括号。
+    /// </summary>
+    private FrameworkElement BuildDanmakuElement(string text, double size, Brush brush)
+    {
+        var weight = Microsoft.UI.Text.FontWeights.SemiBold;
+
+        if (!UbbParser.HasMarkup(text))
+        {
+            return new TextBlock
+            {
+                Text = text,
+                FontSize = size,
+                FontWeight = weight,
+                Foreground = brush,
+                IsHitTestVisible = false,
+                TextWrapping = TextWrapping.NoWrap
+            };
+        }
+
+        // 字典还没加载完时，先按纯文本显示（表情会退成「[表情]」），
+        // 不为了等网络把弹幕放慢——弹幕是时间敏感的。
+        var rich = new RichTextBlock
+        {
+            FontSize = size,
+            FontWeight = weight,
+            Foreground = brush,
+            IsHitTestVisible = false,
+            TextWrapping = TextWrapping.NoWrap
+        };
+
+        var paragraph = new Paragraph();
+        foreach (var segment in UbbParser.Parse(text))
+        {
+            switch (segment.Kind)
+            {
+                case UbbSegmentKind.Text:
+                    paragraph.Inlines.Add(new Run { Text = segment.Text, FontSize = size, FontWeight = weight });
+                    break;
+
+                case UbbSegmentKind.Emote when !string.IsNullOrWhiteSpace(segment.Url):
+                    paragraph.Inlines.Add(new InlineUIContainer
+                    {
+                        Child = new Image
+                        {
+                            Source = new BitmapImage(new Uri(segment.Url!)),
+                            Height = Math.Round(size * 1.3),
+                            Margin = new Thickness(1, 0, 1, -2),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            IsHitTestVisible = false
+                        }
+                    });
+                    break;
+
+                // 弹幕不显示图片评论，直接跳过
+            }
+        }
+
+        if (paragraph.Inlines.Count == 0) paragraph.Inlines.Add(new Run { Text = text, FontSize = size });
+        rich.Blocks.Add(paragraph);
+        return rich;
     }
 
     private void EnsureTicking()
@@ -247,7 +307,7 @@ public sealed partial class DanmakuPanel : UserControl
 
     private sealed class ActiveDanmaku
     {
-        public TextBlock Element { get; set; } = null!;
+        public FrameworkElement Element { get; set; } = null!;
         public TranslateTransform Transform { get; set; } = null!;
 
         /// <summary>当前 X 偏移</summary>
