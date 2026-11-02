@@ -346,13 +346,15 @@ public sealed partial class LoginPage : Page
     }
 
     /// <summary>
-    /// 获取图形验证码并显示验证码面板
+    /// 获取图形验证码并显示验证码面板。
+    /// <paramref name="silent"/> = true 时不写提示行——登录失败后自动换图的场景，
+    /// 提示行要留给失败原因，不能被「请输入图中字符」盖掉。
     /// </summary>
-    private async Task FetchCaptchaAsync()
+    private async Task FetchCaptchaAsync(bool silent = false)
     {
         try
         {
-            ShowLoginResult("正在获取验证码…", isError: false);
+            if (!silent) ShowLoginResult("正在获取验证码…", isError: false);
 
             var captcha = await _login.GetCaptchaAsync();
             if (captcha?.Result != 0 || string.IsNullOrEmpty(captcha.Key) || string.IsNullOrEmpty(captcha.Image))
@@ -379,7 +381,7 @@ public sealed partial class LoginPage : Page
             CaptchaImage.Source = bitmap;
 
             CaptchaPanel.Visibility = Visibility.Visible;
-            ShowLoginResult("请输入图形验证码后点击登录", isError: false);
+            if (!silent) ShowLoginResult("请输入图中 4 位字符（区分大小写）后点击登录", isError: false);
         }
         catch (Exception ex)
         {
@@ -402,14 +404,27 @@ public sealed partial class LoginPage : Page
             if (result?.Result == 0)
             {
                 ShowLoginResult("登录成功，页面将自动关闭", isError: false);
-                AccountState.MarkLoggedIn(username);
+
+                // signin 成功时会带回昵称和头像；没有再退回到用户输入的账号
+                string? displayName = string.IsNullOrWhiteSpace(result.UserName) ? username : result.UserName;
+                string? avatar = string.IsNullOrWhiteSpace(result.Avatar) ? null : result.Avatar;
+                AccountState.MarkLoggedIn(displayName, avatar);
+
+                // signin 偶尔不回昵称/头像，再拿一次 personalInfo 补齐（失败不影响登录结果）
+                _ = RefreshProfileAsync();
+
                 CloseOverlayAfterDelay();
             }
             else
             {
-                ShowLoginResult($"登录失败：{result?.ErrorMsg ?? result?.Result.ToString() ?? "未知错误"}", isError: true);
-                // 登录失败后刷新验证码
-                await FetchCaptchaAsync();
+                string failMessage = $"登录失败：{result?.ErrorMsg ?? result?.Result.ToString() ?? "未知错误"}";
+
+                // 先换一张验证码（旧图用过一次就废），再把它之前的失败原因写回去，
+                // 否则提示行会被「请输入图中 4 位字符」盖掉，用户根本看不到为什么失败
+                await FetchCaptchaAsync(silent: true);
+                CaptchaBox.Text = string.Empty;
+                ShowLoginResult($"{failMessage}（已换一张验证码，请重填）", isError: true);
+                CaptchaBox.Focus(FocusState.Programmatic);
             }
         }
         catch (Exception ex)
@@ -420,6 +435,25 @@ public sealed partial class LoginPage : Page
         {
             SignInButton.Content = "登录";
             SignInButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// 登录成功后补一次账号资料（昵称 / 头像）。personalInfo 未登录会返回 -401，
+    /// 这里只当成「拿不到资料」，不改登录结果。
+    /// </summary>
+    private async Task RefreshProfileAsync()
+    {
+        try
+        {
+            var profile = await _login.GetProfileAsync();
+            if (profile?.Result != 0 || profile.Info is null) return;
+
+            AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl);
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("LoginPage.RefreshProfile", ex);
         }
     }
 

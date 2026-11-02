@@ -198,6 +198,78 @@ public class ApiService : IDisposable
     /// </summary>
     public CookieContainer GetCookieContainer() => _cookieContainer;
 
+    /// <summary>
+    /// 把登录态 Cookie 写到文件（JSON）。界面进程一关 Cookie 就没了，
+    /// 命令行那边每次都是新进程，靠这个文件把会话接上。
+    /// </summary>
+    public void SaveCookies(string path)
+    {
+        var list = _cookieContainer.GetAllCookies().Cast<Cookie>()
+            .Select(c => new PersistedCookie
+            {
+                Name = c.Name,
+                Value = c.Value,
+                Domain = c.Domain,
+                Path = c.Path,
+                Expires = c.Expires == DateTime.MinValue ? null : c.Expires,
+                Secure = c.Secure,
+                HttpOnly = c.HttpOnly
+            })
+            .ToList();
+
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+
+        File.WriteAllText(path, JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    /// <summary>
+    /// 从文件恢复 Cookie，返回成功载入的条数。文件不存在返回 0。
+    /// </summary>
+    public int LoadCookies(string path)
+    {
+        if (!File.Exists(path)) return 0;
+
+        var list = JsonSerializer.Deserialize<List<PersistedCookie>>(File.ReadAllText(path));
+        if (list is null) return 0;
+
+        int loaded = 0;
+        foreach (var item in list)
+        {
+            if (string.IsNullOrWhiteSpace(item.Name) || string.IsNullOrWhiteSpace(item.Domain)) continue;
+
+            try
+            {
+                var cookiePath = string.IsNullOrWhiteSpace(item.Path) ? "/" : item.Path;
+                var cookie = new Cookie(item.Name, item.Value ?? string.Empty, cookiePath, item.Domain)
+                {
+                    Secure = item.Secure,
+                    HttpOnly = item.HttpOnly
+                };
+                if (item.Expires.HasValue) cookie.Expires = item.Expires.Value;
+
+                _cookieContainer.Add(new Uri($"https://{item.Domain.TrimStart('.')}{cookiePath}"), cookie);
+                loaded++;
+            }
+            catch
+            {
+                // 单个 Cookie 坏了不影响其它
+            }
+        }
+        return loaded;
+    }
+
+    private sealed class PersistedCookie
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? Value { get; set; }
+        public string? Domain { get; set; }
+        public string? Path { get; set; }
+        public DateTime? Expires { get; set; }
+        public bool Secure { get; set; }
+        public bool HttpOnly { get; set; }
+    }
+
     internal static string BuildUrl(string baseHost, string path, Dictionary<string, string>? queryParams = null)
     {
         var sb = new StringBuilder(baseHost);
@@ -223,10 +295,26 @@ public class ApiService : IDisposable
         return sb.ToString();
     }
 
-    private async Task<T?> SendAsync<T>(HttpRequestMessage request, CancellationToken ct)
+    /// <summary>
+    /// POST 表单，但把 4xx/5xx 也当成正常响应解析。
+    /// 登录态相关接口（personalInfo）未登录时返回 401 + JSON 正文，
+    /// 走默认的 EnsureSuccessStatusCode 会把这份正文丢掉，只剩一个异常。
+    /// </summary>
+    public async Task<T?> PostFormAllowErrorAsync<T>(string path, Dictionary<string, string> formData, CancellationToken ct = default)
+    {
+        var url = BuildUrl(BaseHost, path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+        return await SendAsync<T>(request, ct, ensureSuccess: false);
+    }
+
+    private async Task<T?> SendAsync<T>(HttpRequestMessage request, CancellationToken ct, bool ensureSuccess = true)
     {
         using var response = await _httpClient.SendAsync(request, ct);
-        response.EnsureSuccessStatusCode();
+        if (ensureSuccess) response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(ct);
         if (string.IsNullOrWhiteSpace(json)) return default;
         return JsonSerializer.Deserialize<T>(json, _jsonOptions);

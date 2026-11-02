@@ -138,12 +138,16 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
 
                     <Border
                         Grid.Column="0"
                         CornerRadius="4"
                         Background="{StaticResource ControlFillColorSecondaryBrush}">
-                        <Image x:Name="CaptchaImage" Width="110" Height="36" Stretch="Fill" />
+                        <Image x:Name="CaptchaImage" Width="110" Height="36" Stretch="Uniform" />
                     </Border>
                     <TextBox
                         Grid.Column="1"
@@ -157,6 +161,16 @@
                         VerticalAlignment="Bottom"
                         Style="{StaticResource AppButtonStyle}"
                         Click="RefreshCaptchaButton_Click" />
+
+                    <!-- 接口对大小写敏感：9gNb 通过、9gnb 报「图片验证码错误」 -->
+                    <TextBlock
+                        Grid.Row="1"
+                        Grid.Column="0"
+                        Grid.ColumnSpan="3"
+                        Margin="0,6,0,0"
+                        Text="验证码区分大小写，看错的字符点「换一张」"
+                        Style="{StaticResource CaptionWrapTextStyle}"
+                        Foreground="{StaticResource TextFillColorSecondaryBrush}" />
                 </Grid>
 
                 <Button

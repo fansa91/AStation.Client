@@ -36,9 +36,33 @@ AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe help
 | `download --url <m3u8>` | 直接下任意 HLS 清单 |
 | `emotes` | 表情字典：包列表、`--keyword` 过滤、`--limit` |
 | `ubb "<文本>"` | 看 UBB 正文被解析成什么（表情 / @ / 图片 / 换行） |
+| `login` | 账号密码登录（见下节），成功后把 Cookie 存盘 |
+| `whoami` | 用存下的 Cookie 探一次 `personalInfo`，看登录态 |
 | `config [show\|path\|init]` | 看 / 建本地配置文件（见下节） |
 
 通用开关：`--json`（原始结构）、`--h264`（不要 H.265 清单）、`--raw`（原始正文）。
+
+## 登录
+
+AcFun 的登录态是 **Cookie**，没有独立 token。命令行每次都是新进程，
+所以 `login` 成功后会把 Cookie 落到 `%LOCALAPPDATA%\AStation.Client\cli-cookies.json`，
+后续用 `whoami`（或 `--cookies <路径>`）复用。
+
+```bash
+# 交互式：自动取验证码、存成 PNG、提示你输入图中的字符
+AStation.Client.Console.exe login --username 13800000000 --password ***
+
+# 脚本式：自己取图看字符，再指定 key + code
+AStation.Client.Console.exe login --username 手机号 --password 密码 --captcha-key <key> --captcha-code KJ9i
+
+AStation.Client.Console.exe whoami
+```
+
+- 账号必须是**手机号或邮箱**，老式用户名会被服务端拒绝（`result=100001017`）
+- 图形验证码**区分大小写**（`KJ9i` 通过、`kj9i` 报 `100001016`），一张图只能对上一组字符
+- 短期内多次登录才会强制验证码；正常情况服务端也会给图，按提示填即可
+- 扫码登录（`qr/start` → `scanResult`）在桌面端走不通：签名与客户端指纹绑定，
+  `scanResult` 恒返回 `result=10 client error`，所以只做了账号密码这条线
 
 ## 配置文件
 

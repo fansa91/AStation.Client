@@ -82,6 +82,8 @@ try
         "play" or "p" => await MediaCommands.PlayAsync(cli),
         "emotes" or "e" => await MediaCommands.EmotesAsync(cli),
         "download" or "dl" => await DownloadCommand.RunAsync(cli),
+        "login" or "signin" => await LoginCommand.LoginAsync(cli),
+        "whoami" or "me" => await LoginCommand.WhoAmIAsync(cli),
         // config 只看命令行本身，不要把配置里的参数混进来
         "config" or "cfg" => ConfigCommand.Run(new CliArgs(rest, switchNames), config),
         _ => Unknown(command),
@@ -143,6 +145,9 @@ void PrintHelp()
     Out.Line();
     Out.Line("其它");
     Out.Line("  emotes               [--keyword 笑] [--limit 30]        表情字典");
+    Out.Line("  login                --username <手机号/邮箱> --password <密码> [--captcha-code 9gNb]");
+    Out.Line("                       [--captcha-image 路径] [--cookies 路径]  账号密码登录（验证码区分大小写）");
+    Out.Line("  whoami               [--cookies 路径]                   看当前 Cookie 登录态");
     Out.Line("  config [show|path|init]                                 看 / 建本地配置文件（格式同 BBDown.config）");
     Out.Line();
     Out.Line("通用开关：--json 输出原始结构（可接管道），--h264 不要 H.265 清单，--raw 显示未解析正文");
@@ -156,4 +161,5 @@ void PrintHelp()
     Out.Line("  dotnet run --project AStation.Client.Console -- video 12345678 --json");
     Out.Line("  dotnet run --project AStation.Client.Console -- download 12345678 --quality 720 -o 猫.ts");
     Out.Line("  AStation.Client.Console.exe config init");
+    Out.Line("  AStation.Client.Console.exe login --username 13800000000 --password *** && whoami");
 }

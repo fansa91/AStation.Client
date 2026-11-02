@@ -96,14 +96,24 @@ public class LoginService
     #endregion
 
     /// <summary>
-    /// 检查当前是否已登录（通过访问仅需登录态的接口判断，如 /user/personalInfo）。
+    /// 拉取当前登录账号的资料（昵称 / 头像 / userId）。
+    /// 接口：POST https://www.acfun.cn/rest/pc-direct/user/personalInfo（无参数，靠 Cookie）
+    /// 未登录返回 result=-401 + HTTP 401，此时 <see cref="ProfileResponse.Info"/> 为 null。
+    /// </summary>
+    public async Task<ProfileResponse?> GetProfileAsync(CancellationToken ct = default)
+    {
+        return await _api.PostFormAllowErrorAsync<ProfileResponse>("/rest/pc-direct/user/personalInfo", new(), ct);
+    }
+
+    /// <summary>
+    /// 检查当前 Cookie 会话是否仍然有效（靠 personalInfo 探一次）。
     /// </summary>
     public async Task<bool> IsLoggedInAsync(CancellationToken ct = default)
     {
         try
         {
-            var resp = await _api.GetAsync<AcFunResponse<object>>("/user/personalInfo", ct: ct);
-            return resp?.Result == 0;
+            var profile = await GetProfileAsync(ct);
+            return profile?.Result == 0;
         }
         catch
         {
@@ -164,7 +174,8 @@ public class CaptchaResponse
 }
 
 /// <summary>
-/// 账号密码登录响应
+/// 账号密码登录响应。成功时还会带 userId / username / img（头像），
+/// 登录页直接用这些填账号区，而不是回显用户输入的手机号。
 /// </summary>
 public class SignInResponse
 {
@@ -173,6 +184,51 @@ public class SignInResponse
 
     [JsonPropertyName("error_msg")]
     public string? ErrorMsg { get; set; }
+
+    [JsonPropertyName("userId")]
+    public long UserId { get; set; }
+
+    [JsonPropertyName("username")]
+    public string? UserName { get; set; }
+
+    /// <summary>头像地址</summary>
+    [JsonPropertyName("img")]
+    public string? Avatar { get; set; }
+}
+
+/// <summary>
+/// 账号资料响应（personalInfo）
+/// </summary>
+public class ProfileResponse
+{
+    [JsonPropertyName("result")]
+    public int Result { get; set; }
+
+    [JsonPropertyName("error_msg")]
+    public string? ErrorMsg { get; set; }
+
+    [JsonPropertyName("info")]
+    public ProfileInfo? Info { get; set; }
+}
+
+/// <summary>
+/// personalInfo 的 info 节点（只挑界面用得到的字段）
+/// </summary>
+public class ProfileInfo
+{
+    [JsonPropertyName("userId")]
+    public long UserId { get; set; }
+
+    [JsonPropertyName("userName")]
+    public string? UserName { get; set; }
+
+    /// <summary>头像地址</summary>
+    [JsonPropertyName("headUrl")]
+    public string? HeadUrl { get; set; }
+
+    /// <summary>脱敏手机号，如 178****0287</summary>
+    [JsonPropertyName("mobile")]
+    public string? Mobile { get; set; }
 }
 
 /// <summary>
