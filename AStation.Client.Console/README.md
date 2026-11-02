@@ -36,8 +36,50 @@ AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe help
 | `download --url <m3u8>` | 直接下任意 HLS 清单 |
 | `emotes` | 表情字典：包列表、`--keyword` 过滤、`--limit` |
 | `ubb "<文本>"` | 看 UBB 正文被解析成什么（表情 / @ / 图片 / 换行） |
+| `config [show\|path\|init]` | 看 / 建本地配置文件（见下节） |
 
 通用开关：`--json`（原始结构）、`--h264`（不要 H.265 清单）、`--raw`（原始正文）。
+
+## 配置文件
+
+格式照 BBDown 的 `BBDown.config`：**一行一个参数**，需要值的选项把值写在**下一行**，
+`#` 开头是注释，空行忽略。因为一行就是一个完整参数，值里带空格、带引号都不用转义。
+
+```config
+# AStation.Client.Console.config
+# 默认不要 H.265 清单
+--h264
+
+# 列表默认 10 条
+--limit
+10
+
+# 下载默认 720P 并转 mp4
+--quality
+720
+--mp4
+```
+
+放置位置与优先级：
+
+1. `--config-file <路径>` 指定的文件（缺文件直接报错）
+2. 程序目录（exe 旁边）的 `AStation.Client.Console.config`
+3. 当前工作目录的同名文件
+
+配置里的参数排在命令行参数**之前**，所以命令行上再写一次就覆盖它
+（`search 猫 --limit 3` 会盖掉配置里的 10）。`--no-config` 临时忽略配置文件。
+配置里不要写命令名和裸参数——只放选项，写错了会在 stderr 提示。
+
+相关命令：
+
+```bash
+AStation.Client.Console.exe config          # 看生效的配置文件与解析出的参数
+AStation.Client.Console.exe config path     # 只输出路径，脚本里用（没找到退出码 1）
+AStation.Client.Console.exe config init     # 当前目录写一份全注释模板
+AStation.Client.Console.exe config init --path C:\Tools\ac.config --force
+```
+
+诊断信息（加载了哪个配置、哪行写错）走 **stderr**，不会污染 `--json` 的 stdout。
 
 ## 几个实现要点
 

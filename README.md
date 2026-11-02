@@ -140,6 +140,19 @@ AStation.Client.Console.exe emotes --keyword 笑
 
 所有命令都支持 `--json`（输出原始结构，可直接接 `jq`）。完整用法见 `AStation.Client.Console.exe help`。
 
+常用参数可以写进配置文件，格式照 BBDown 的 `BBDown.config`：一行一个参数、值写下一行、`#` 注释。
+
+```config
+--h264
+--limit
+10
+--quality
+720
+```
+
+放在 exe 旁边或当前目录即默认生效，也可以用 `--config-file <路径>` 指定、`--no-config` 跳过；
+命令行上同名参数优先。`AStation.Client.Console.exe config init` 生成模板，`config show` 看解析结果。
+
 > 本机 .NET 不在默认路径时，运行前需要 `$env:DOTNET_ROOT='C:\dotnet'`（或把 `C:\dotnet` 加进 PATH）。
 
 ## 版本与发布

@@ -11,10 +11,47 @@ catch
     // 输出被重定向到奇怪的地方时设置编码会抛，忽略即可
 }
 
-if (args.Length == 0 || args[0] is "help" or "-h" or "--help" or "/?")
+if (args.Length == 0 && CliConfig.FindDefault() is null)
 {
     PrintHelp();
     return 0;
+}
+
+if (args.Length > 0 && args[0] is "help" or "-h" or "--help" or "/?")
+{
+    PrintHelp();
+    return 0;
+}
+
+// 所有命令共用的开关：解析器需要知道哪些是「不带值」的开关
+string[] switchNames = { "json", "raw", "mp4", "h264", "no-config", "force", "f", "help" };
+var switches = new HashSet<string>(switchNames, StringComparer.OrdinalIgnoreCase);
+
+// 本地配置文件（格式同 BBDown.config）：里面的参数排在命令行前面，命令行可覆盖
+CliConfig.Result config;
+try
+{
+    config = CliConfig.Load(args, switches);
+}
+catch (CliUsageException ex)
+{
+    Out.Error(ex.Message);
+    return 2;
+}
+
+if (config.Loaded)
+{
+    // 走 stderr：--json 时 stdout 要留给管道
+    Out.Diag($"配置文件：{config.Path}（{config.Tokens.Count} 项）");
+    foreach (var warning in config.Warnings) Out.Diag($"配置警告：{warning}");
+}
+
+if (args.Length == 0)
+{
+    // 只有配置文件、没给命令 —— 不知道要做什么
+    Out.Warn("配置文件已加载，但没有指定命令");
+    PrintHelp();
+    return 2;
 }
 
 string command = args[0].ToLowerInvariant();
@@ -28,8 +65,7 @@ Console.CancelKeyPress += (_, e) =>
 };
 CliContext.Token = cts.Token;
 
-// 所有命令共用的开关：解析器需要知道哪些是「不带值」的开关
-var cli = new CliArgs(rest, "json", "raw", "mp4", "h264");
+var cli = new CliArgs(config.Tokens.Concat(rest), switchNames);
 
 try
 {
@@ -46,6 +82,8 @@ try
         "play" or "p" => await MediaCommands.PlayAsync(cli),
         "emotes" or "e" => await MediaCommands.EmotesAsync(cli),
         "download" or "dl" => await DownloadCommand.RunAsync(cli),
+        // config 只看命令行本身，不要把配置里的参数混进来
+        "config" or "cfg" => ConfigCommand.Run(new CliArgs(rest, switchNames), config),
         _ => Unknown(command),
     };
 }
@@ -105,11 +143,17 @@ void PrintHelp()
     Out.Line();
     Out.Line("其它");
     Out.Line("  emotes               [--keyword 笑] [--limit 30]        表情字典");
+    Out.Line("  config [show|path|init]                                 看 / 建本地配置文件（格式同 BBDown.config）");
     Out.Line();
     Out.Line("通用开关：--json 输出原始结构（可接管道），--h264 不要 H.265 清单，--raw 显示未解析正文");
+    Out.Line("配置相关：--config-file <路径> 指定配置文件，--no-config 本次忽略配置");
+    Out.Line();
+    Out.Line("配置文件：程序目录或当前目录的 AStation.Client.Console.config（config init 生成模板）");
+    Out.Line("  一行一个参数，需要值的选项把值写在下一行，# 开头是注释；配置里的参数排在命令行之前");
     Out.Line();
     Out.Line("例子");
     Out.Line("  dotnet run --project AStation.Client.Console -- search 猫 --sort 2 --limit 10");
     Out.Line("  dotnet run --project AStation.Client.Console -- video 12345678 --json");
     Out.Line("  dotnet run --project AStation.Client.Console -- download 12345678 --quality 720 -o 猫.ts");
+    Out.Line("  AStation.Client.Console.exe config init");
 }

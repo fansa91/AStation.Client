@@ -18,6 +18,8 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <ProjectReference Include="../AStation.Client.Core/AStation.Client.Core.csproj" />
+    <!-- 命令行项目没有 WinUI 依赖，可以安全引用（CliConfig 等纯逻辑在这里做单测） -->
+    <ProjectReference Include="../AStation.Client.Console/AStation.Client.Console.csproj" />
   </ItemGroup>
 
 </Project>

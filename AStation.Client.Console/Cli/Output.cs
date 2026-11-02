@@ -30,6 +30,9 @@ public static class Out
 
     public static void Dim(string text) => Write(text, ConsoleColor.DarkGray);
 
+    /// <summary>诊断信息走 stderr：<c>--json</c> 的 stdout 要留给管道</summary>
+    public static void Diag(string text) => Console.Error.WriteLine(text);
+
     public static void KeyValues(params (string Key, string? Value)[] pairs)
     {
         int keyWidth = pairs.Length == 0 ? 0 : pairs.Max(p => Width(p.Key));
