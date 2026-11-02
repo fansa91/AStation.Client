@@ -7,7 +7,6 @@ using Microsoft.UI.Xaml.Input;
 using System;
 using System.Runtime.InteropServices;
 using AStation_Client.Pages;
-using AStation_Client.Pages.Overlay;
 using AStation_Client.Services;
 
 namespace AStation_Client;
@@ -345,7 +344,7 @@ public sealed partial class MainWindow : Window
 
             if (profile?.Result == 0 && profile.Info is not null)
             {
-                AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl);
+                AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl, profile.Info.UserId);
                 SessionStore.Save(ServiceLocator.Api);   // 服务端续过期后回写一次
                 return;
             }
@@ -367,7 +366,8 @@ public sealed partial class MainWindow : Window
     {
         if (AccountState.IsLoggedIn)
         {
-            OpenOverlay(typeof(UserPage));
+            // 我的空间是正经页面（播放历史要能翻、能后退），不再弹覆盖层
+            OpenMainPage(typeof(UserPage));
         }
         else
         {
@@ -452,9 +452,9 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void SyncNavSelection(Type pageType)
     {
-        // 搜索页不是侧栏项（跳转页，随时可能从任何页面进来）。清掉高亮：
+        // 搜索页 / 我的空间都不是侧栏项（跳转页，随时可能从任何页面进来）。清掉高亮：
         // 既不会出现「人在搜索页、高亮却停在首页」，也保证回点首页能触发切换。
-        if (pageType == typeof(SearchPage))
+        if (pageType == typeof(SearchPage) || pageType == typeof(UserPage))
         {
             NavView.SelectedItem = null;
             return;
@@ -486,7 +486,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>在覆盖层打开页面（登录、用户空间）</summary>
+    /// <summary>在覆盖层打开页面（登录）</summary>
     public void OpenOverlay(Type pageType, object? parameter = null)
     {
         // 小窗口下卡片要跟着缩，不能按 880 硬撑

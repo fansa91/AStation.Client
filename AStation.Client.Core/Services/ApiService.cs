@@ -90,6 +90,21 @@ public class ApiService : IDisposable
     }
 
     /// <summary>
+    /// POST form（允许重复键，例如播放历史要的 resourceTypes=1&amp;resourceTypes=2）。
+    /// <see cref="Dictionary{TKey,TValue}"/> 版重载会去重，这种接口只能走这个。
+    /// </summary>
+    public async Task<T?> PostFormAsync<T>(string path, IEnumerable<KeyValuePair<string, string>> formData, CancellationToken ct = default)
+    {
+        var url = BuildUrl(BaseHost, path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+        return await SendAsync<T>(request, ct);
+    }
+
+    /// <summary>
     /// GET 原始字符串（用于 HTML 页面抓取，如首页 BigPipe、搜索结果页）
     /// </summary>
     public async Task<string?> GetStringAsync(string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)

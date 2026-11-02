@@ -36,6 +36,12 @@
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
+    <!-- 我的空间顶部横幅：品牌渐变，随主题不变 -->
+    <LinearGradientBrush x:Key="AccountBannerBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#FF4A90D9" />
+        <GradientStop Offset="1" Color="#FFE45C7B" />
+    </LinearGradientBrush>
+
     <!-- ── 间距 ── -->
     <x:Double x:Key="SpaceXxs">4</x:Double>
     <x:Double x:Key="SpaceXs">8</x:Double>

@@ -55,7 +55,9 @@ AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直�
 - 首页推荐、频道导航
 - 排行榜：全站 / 各频道，日榜、三日榜、周榜
 - 番剧库、我的追番（需登录）、选集连播
-- 直播大厅：分区筛选、进直播间看 FLV 流；直播间与点播共用同一套播放器控制层，右栏可查直播信息与码率档位
+- 直播大厅：分区筛选、进直播间看 FLV 流；直播间与点播共用同一套播放器控制层，右栏可查直播信息、码率档位与实时弹幕
+- 直播弹幕：接快手 `zt.live` 的 protobuf 长连接（TCP），进房补一批最近评论，之后实时滚动
+- 我的空间：账号卡 + 播放历史（含进度与观看时间），收藏夹留空态
 - 账号登录（密码登录），会话持久化到本地，重启不用重登
 
 **播放**
@@ -128,6 +130,7 @@ AStation.Client.Console.exe danmaku 4494978 --limit 20     # 用分P 的 videoId
 AStation.Client.Console.exe rank --channel 0 --period week
 AStation.Client.Console.exe bangumi list
 AStation.Client.Console.exe live play 934542 7b_30oOFkR8
+AStation.Client.Console.exe livedanmaku 934542 --seconds 20   # 直播间实时弹幕（TCP 长连接）
 
 # 取流与下载（HLS 分片会自动带上清单的签名 query）
 AStation.Client.Console.exe play 3261720
@@ -220,6 +223,7 @@ git push origin v0.1.0
 - **直播 FLV**：Media Foundation 不支持 FLV，用 FFmpegInteropX 解码后交给 `MediaPlayer`
 - **统一播放器层**：`Controls/PlayerOverlay.xaml` 一套外壳同时服务点播与直播（视频区 / 弹幕层 / 顶栏 / 160px 控制层 / 气泡 / 迷你进度 / 全屏 / 自动隐藏），直播形态收成 96px 单行并隐藏进度与倍速；页面只负责取流与业务数据
 - **弹幕**：用 16ms `DispatcherTimer` 逐帧推进，不用 Storyboard 动 `TranslateTransform`（WinUI 3 下不插值）
+- **直播弹幕**：快手 `zt.live` 的二进制协议（magic `0xABCD0001` + protobuf 头 + AES-CBC 载荷）走 TCP `slink.gifshow.com:14000`，握手/注册/进房/心跳交给 `AcFunDanmu` 库，本仓库自己取令牌并准备进房参数。两处与库默认行为不同，必须覆盖：令牌要传**字符串的 UTF-8 原始字节**（库按 base64 解 → 握手被判定 `10026 token 过期`），密钥要传 `acSecurity` 的 **base64 解码结果**（库按 UTF-8 取字节 → `10012 解密失败`）。评论有两条来路：`ACTION_SIGNAL/COMMENT` 是实时流，`STATE_SIGNAL/RECENT_COMMENT` 是进房时补的历史，按「用户+时间+内容」去重
 - **全屏**：Win32 `WS_POPUP` + `SetWindowPos` 铺满显示器，同时抵消 NavigationView 预留的 48px 与列间距
 
 ## 已知限制
@@ -228,9 +232,9 @@ git push origin v0.1.0
 - 登录会话是 Cookie，保存在 `%LOCALAPPDATA%\AStation.Client\cookies.json`（退出登录即删除）；启动时会用 `personalInfo` 自检一次，Cookie 过期就自动退回未登录，不会再出现「标题栏显示已登录、点收藏 401」的假登录
 - 楼中楼只能拿到每个主楼的前 3 条回复，官方没有「更多回复」接口
 - 搜索只覆盖视频（用户 / 番剧的搜索接口返回 HTML 页，未接入），且接口只下发前 30 条
-- 用户空间页目前是骨架：只显示登录态与退出登录，作品/收藏列表未接入
+- 用户空间页已接播放历史；收藏夹没有公开接口（`/collect/list`、`/favorite/list` 等 7 个候选路径全部 404），先留空态
 - 播放器暂无键盘快捷键，只有 `Esc` 退出全屏
-- 直播间弹幕数据通道（快手 `zt.live` 的 protobuf 长连接）尚未接入：播放器里的弹幕层与开关已就位，当前不会显示弹幕
+- 直播弹幕只渲染文字：表情走富文本标记，目前按原文显示，未做图形化
 
 ## 声明
 

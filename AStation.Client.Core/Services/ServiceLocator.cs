@@ -19,6 +19,8 @@ public static class ServiceLocator
     private static LivePlayService? _livePlay;
     private static RelatedService? _related;
     private static SearchService? _search;
+    private static HistoryService? _history;
+    private static LiveDanmakuService? _liveDanmaku;
 
     public static ApiService Api =>
         _api ??= new ApiService();
@@ -62,4 +64,12 @@ public static class ServiceLocator
     /// <summary>视频搜索</summary>
     public static SearchService Search =>
         _search ??= new SearchService(Api);
+
+    /// <summary>播放历史（需登录）</summary>
+    public static HistoryService History =>
+        _history ??= new HistoryService(Api);
+
+    /// <summary>直播间弹幕通道（长连接）</summary>
+    public static LiveDanmakuService LiveDanmaku =>
+        _liveDanmaku ??= new LiveDanmakuService(Api);
 }

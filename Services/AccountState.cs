@@ -26,6 +26,9 @@ public static class AccountState
     /// <summary>昵称；未知时为 null</summary>
     public static string? UserName { get; private set; }
 
+    /// <summary>用户 id（uid）；未知时为 0</summary>
+    public static long UserId { get; private set; }
+
     /// <summary>头像地址；未知时为 null</summary>
     public static string? AvatarUrl { get; private set; }
 
@@ -47,6 +50,7 @@ public static class AccountState
 
             IsLoggedIn = state.IsLoggedIn;
             UserName = state.UserName;
+            UserId = state.UserId;
             AvatarUrl = state.AvatarUrl;
         }
         catch
@@ -55,19 +59,20 @@ public static class AccountState
         }
     }
 
-    public static void MarkLoggedIn(string? userName = null, string? avatarUrl = null)
+    public static void MarkLoggedIn(string? userName = null, string? avatarUrl = null, long userId = 0)
     {
         EnsureLoaded();
         IsLoggedIn = true;
         if (!string.IsNullOrWhiteSpace(userName)) UserName = userName;
         if (!string.IsNullOrWhiteSpace(avatarUrl)) AvatarUrl = avatarUrl;
+        if (userId > 0) UserId = userId;
 
         Save();
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
-    /// <summary>补上昵称 / 头像（登录后异步拉取用户信息时调用）</summary>
-    public static void UpdateProfile(string? userName, string? avatarUrl)
+    /// <summary>补上昵称 / 头像 / uid（登录后异步拉取用户信息时调用）</summary>
+    public static void UpdateProfile(string? userName, string? avatarUrl, long userId = 0)
     {
         EnsureLoaded();
         if (!IsLoggedIn) return;
@@ -75,6 +80,7 @@ public static class AccountState
         var changed = false;
         if (!string.IsNullOrWhiteSpace(userName) && userName != UserName) { UserName = userName; changed = true; }
         if (!string.IsNullOrWhiteSpace(avatarUrl) && avatarUrl != AvatarUrl) { AvatarUrl = avatarUrl; changed = true; }
+        if (userId > 0 && userId != UserId) { UserId = userId; changed = true; }
         if (!changed) return;
 
         Save();
@@ -85,6 +91,7 @@ public static class AccountState
     {
         IsLoggedIn = false;
         UserName = null;
+        UserId = 0;
         AvatarUrl = null;
 
         Save();
@@ -102,6 +109,7 @@ public static class AccountState
                 {
                     IsLoggedIn = IsLoggedIn,
                     UserName = UserName,
+                    UserId = UserId,
                     AvatarUrl = AvatarUrl
                 });
                 File.WriteAllText(StatePath, json);
@@ -117,6 +125,7 @@ public static class AccountState
     {
         public bool IsLoggedIn { get; set; }
         public string? UserName { get; set; }
+        public long UserId { get; set; }
         public string? AvatarUrl { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
@@ -409,7 +409,7 @@ public sealed partial class LoginPage : Page
                 // signin 成功时会带回昵称和头像；没有再退回到用户输入的账号
                 string? displayName = string.IsNullOrWhiteSpace(result.UserName) ? username : result.UserName;
                 string? avatar = string.IsNullOrWhiteSpace(result.Avatar) ? null : result.Avatar;
-                AccountState.MarkLoggedIn(displayName, avatar);
+                AccountState.MarkLoggedIn(displayName, avatar, result.UserId);
 
                 // Cookie 就是会话本钱：不落盘的话重开应用就变成假登录
                 SessionStore.Save(ServiceLocator.Api);
@@ -453,7 +453,7 @@ public sealed partial class LoginPage : Page
             var profile = await _login.GetProfileAsync();
             if (profile?.Result != 0 || profile.Info is null) return;
 
-            AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl);
+            AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl, profile.Info.UserId);
         }
         catch (Exception ex)
         {

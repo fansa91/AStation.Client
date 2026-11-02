@@ -31,6 +31,7 @@ AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe help
 | `bangumi list` / `bangumi <id>` | 番剧库 / 番剧详情与剧集 |
 | `live list` | 直播间列表。`--channel 0\|1\|2\|3\|4`（全部 / 游戏 / 其他 / 娱乐 / 虚拟偶像） |
 | `live play <authorId> <liveId>` | 直播拉流档位（FLV 地址） |
+| `livedanmaku <authorId>` | 直播间实时弹幕（快手 `zt.live` TCP 长连接）。`--seconds` 监听时长，`--json` 汇总输出 |
 | `play <resourceId>` | 点播取流：清晰度、码率、CDN 线路、m3u8 地址 |
 | `download <resourceId>` | 下载点播视频，拼成单个 `.ts`；`--mp4` 用 ffmpeg 无损转封装 |
 | `download --url <m3u8>` | 直接下任意 HLS 清单 |

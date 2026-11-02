@@ -294,16 +294,57 @@
                             </Grid>
                         </StackPanel>
 
-                        <!-- 弹幕：通道未接入，用统一状态面板说明 -->
-                        <StackPanel
+                        <!-- 弹幕：实时弹幕流（快手 zt.live 长连接） -->
+                        <Grid
                             x:Name="DanmakuPanelContent"
-                            Spacing="8"
+                            RowSpacing="8"
                             Visibility="Collapsed">
-                            <StackPanel.RenderTransform>
+                            <Grid.RenderTransform>
                                 <TranslateTransform x:Name="DanmakuPanelTransform" />
-                            </StackPanel.RenderTransform>
-                            <controls:StatePanel x:Name="DanmakuState" />
-                        </StackPanel>
+                            </Grid.RenderTransform>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="实时弹幕，进房时会补一批最近评论。"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="DanmakuCountText"
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource MetaTextStyle}" />
+                            </Grid>
+
+                            <Grid Grid.Row="1">
+                                <ListView
+                                    x:Name="DanmakuList"
+                                    ItemContainerStyle="{StaticResource ListViewItemFlushStyle}"
+                                    SelectionMode="None">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate x:DataType="svc:LiveDanmakuMessage">
+                                            <TextBlock
+                                                Margin="0,3"
+                                                IsTextSelectionEnabled="True"
+                                                TextWrapping="Wrap">
+                                                <Run Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Text="{x:Bind UserName}" />
+                                                <Run Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="：" />
+                                                <Run Text="{x:Bind Content}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <controls:StatePanel x:Name="DanmakuState" />
+                            </Grid>
+                        </Grid>
                     </Grid>
                 </Grid>
             </Border>

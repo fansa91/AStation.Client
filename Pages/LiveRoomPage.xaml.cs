@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
+using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using AStation_Client.Controls;
 using AStation_Client.Services;
@@ -26,11 +27,18 @@ namespace AStation_Client.Pages;
 public sealed partial class LiveRoomPage : Page
 {
     private readonly LivePlayService _livePlay = ServiceLocator.LivePlay;
+    private readonly LiveDanmakuService _liveDanmaku = ServiceLocator.LiveDanmaku;
+
+    /// <summary>右栏弹幕列表的数据源（只留最近若干条，避免长时间挂机涨内存）</summary>
+    private readonly ObservableCollection<LiveDanmakuMessage> _danmakuFeed = new();
+
+    private const int DanmakuFeedLimit = 300;
 
     private string _authorId = string.Empty;
     private string _liveId = string.Empty;
     private LiveStreamResult? _streams;
     private bool _suppressQualityChange;
+    private bool _danmakuStarted;
 
     /// <summary>控制栏「清晰度」Flyout 里的码率列表（与侧栏列表共用同一份数据）</summary>
     private ListView _flyoutQualityList = null!;
@@ -46,7 +54,8 @@ public sealed partial class LiveRoomPage : Page
         // 直播形态：控制条单行、无进度、无倍速，右上角常显 LIVE 标识
         Overlay.ConfigureForLive();
         Overlay.SetLineVisible(false);
-        Overlay.SetDanmakuAvailable(false, "直播弹幕通道尚未接入，开关暂不可用");
+
+        DanmakuList.ItemsSource = _danmakuFeed;
 
         BuildQualityPanels();
 
@@ -54,11 +63,9 @@ public sealed partial class LiveRoomPage : Page
         Overlay.FullscreenChanged += Overlay_FullscreenChanged;
         Overlay.MediaFailed += Overlay_MediaFailed;
 
-        // 弹幕分页：通道未接入，用统一状态面板说明，不再是几段散文字
-        DanmakuState.ShowEmpty(
-            "直播弹幕通道尚未接入",
-            "弹幕层与开关已经就位，等快手 zt.live 的 protobuf 长连接接入后可直接复用播放器内的弹幕层。",
-            glyph: "\uE90A");
+        _liveDanmaku.MessageReceived += LiveDanmaku_MessageReceived;
+        _liveDanmaku.StatusChanged += LiveDanmaku_StatusChanged;
+        Unloaded += (_, _) => DetachDanmaku();
 
         SizeChanged += (_, e) => ApplyResponsiveLayout(e.NewSize.Width, e.NewSize.Height);
         Loaded += (_, _) => ApplyResponsiveLayout(ActualWidth, ActualHeight);
@@ -241,6 +248,9 @@ public sealed partial class LiveRoomPage : Page
         }
 
         await LoadStreamsAsync();
+
+        // 弹幕通道独立于拉流：即使主播没推流，房间里的弹幕也可能还在走
+        StartDanmaku();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -251,8 +261,87 @@ public sealed partial class LiveRoomPage : Page
         mp?.Pause();
         Overlay.MediaElement.Source = null;
 
+        DetachDanmaku();
+
         // 离开页面时务必还原窗口呈现方式，否则会卡在全屏
         Overlay.ExitFullscreen();
+    }
+
+    // ───────────────────────────── 弹幕 ─────────────────────────────
+
+    private void StartDanmaku()
+    {
+        if (_danmakuStarted) return;
+        if (!long.TryParse(_authorId, out var authorId) || authorId <= 0) return;
+
+        _danmakuStarted = true;
+        DanmakuState.ShowLoading("正在连接弹幕通道…");
+
+        // 直播弹幕是常驻长连接，不跟播放进度走；失败/断开会由 StatusChanged 回报
+        _liveDanmaku.Start(authorId);
+    }
+
+    private void DetachDanmaku()
+    {
+        if (!_danmakuStarted) return;
+
+        _danmakuStarted = false;
+        _liveDanmaku.Stop();
+        Overlay.Danmaku.ClearAll();
+    }
+
+    private void LiveDanmaku_MessageReceived(object? sender, LiveDanmakuMessage message)
+    {
+        // 协议回调跑在 TCP 读线程，必须切回 UI 线程
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            _danmakuFeed.Add(message);
+            while (_danmakuFeed.Count > DanmakuFeedLimit) _danmakuFeed.RemoveAt(0);
+
+            DanmakuCountText.Text = $"共 {_danmakuFeed.Count} 条";
+            DanmakuState.Hide();
+
+            // 历史那批只塞列表，不飘屏（不然一进房糊一片）
+            if (message.IsRecent) return;
+            if (!Overlay.DanmakuEnabled) return;
+
+            Overlay.Danmaku.AddDanmaku($"{message.UserName}：{message.Content}");
+        });
+    }
+
+    private void LiveDanmaku_StatusChanged(object? sender, LiveDanmakuStatus status)
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            switch (status)
+            {
+                case LiveDanmakuStatus.Connecting:
+                    Overlay.SetDanmakuAvailable(false, "正在连接弹幕通道…");
+                    if (_danmakuFeed.Count == 0) DanmakuState.ShowLoading("正在连接弹幕通道…");
+                    break;
+
+                case LiveDanmakuStatus.Connected:
+                    Overlay.SetDanmakuAvailable(true, "弹幕来自快手 zt.live 长连接");
+                    if (_danmakuFeed.Count == 0) DanmakuState.Hide();
+                    break;
+
+                case LiveDanmakuStatus.Failed:
+                    Overlay.SetDanmakuAvailable(false, "弹幕通道连不上");
+                    if (_danmakuFeed.Count == 0)
+                    {
+                        DanmakuState.ShowError("弹幕通道连接失败", "快手 zt.live 长连接没连上，重进直播间可再试一次。");
+                    }
+                    break;
+
+                case LiveDanmakuStatus.Closed:
+                    Overlay.SetDanmakuAvailable(false, "弹幕通道已断开");
+                    if (_danmakuFeed.Count == 0)
+                    {
+                        DanmakuState.ShowEmpty("弹幕通道已断开", "直播可能已结束，或弹幕服务暂时不可用。", glyph: "\uE90A");
+                    }
+                    break;
+            }
+        });
     }
 
     // ───────────────────────────── 拉流 ─────────────────────────────

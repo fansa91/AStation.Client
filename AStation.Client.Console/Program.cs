@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using AStation_Client.Cli;
 using AStation_Client.Cli.Commands;
 
@@ -79,6 +79,7 @@ try
         "ubb" => await ContentCommands.UbbAsync(cli),
         "bangumi" or "b" => await MediaCommands.BangumiAsync(cli),
         "live" or "l" => await MediaCommands.LiveAsync(cli),
+        "livedanmaku" or "ld" => await LiveDanmakuCommand.RunAsync(cli),
         "play" or "p" => await MediaCommands.PlayAsync(cli),
         "emotes" or "e" => await MediaCommands.EmotesAsync(cli),
         "download" or "dl" => await DownloadCommand.RunAsync(cli),
@@ -137,6 +138,7 @@ void PrintHelp()
     Out.Line("  bangumi <bangumiId>                                     番剧详情 + 剧集");
     Out.Line("  live list            [--channel 0] [--limit 20]         直播间列表（0 全部 / 1 游戏 / 2 其他 / 3 娱乐 / 4 虚拟偶像）");
     Out.Line("  live play <authorId> <liveId>                           直播拉流档位");
+    Out.Line("  livedanmaku <authorId> [--seconds 20] [--json]           直播间弹幕（需要主播 uid）");
     Out.Line();
     Out.Line("播放 / 下载");
     Out.Line("  play <resourceId>    [--type 2] [--video id] [--mkey k] 取流：清晰度 + CDN 线路");
