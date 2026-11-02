@@ -110,7 +110,7 @@ $checks = @(
 $all = $window.FindAll($TS::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
 Write-Host "控件总数: $($all.Count)"
 
-foreach ($name in @('首页','频道','排行榜','番剧','直播','登录','设置','搜索视频、用户、番剧')) {
+foreach ($name in @('首页','频道','排行榜','番剧','直播','登录','设置','搜索视频')) {
     $hit = $null
     foreach ($e in $all) {
         if ($e.Current.Name -eq $name) { $hit = $e; break }

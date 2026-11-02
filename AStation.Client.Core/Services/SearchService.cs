@@ -3,9 +3,14 @@ using System.Text.Json.Serialization;
 namespace AStation_Client.Services;
 
 /// <summary>
-/// 视频搜索：GET /rest/pc-direct/search/video?keyword=&amp;page=&amp;size=
+/// 视频搜索：GET /rest/pc-direct/search/video?keyword=&amp;sortType=
 /// 只覆盖视频（用户 / 番剧的搜索接口返回 HTML 页，暂未接入），结果映射成
 /// 与首页一致的 <see cref="AStation_Client.Models.VideoItem"/>，卡片可以直接复用。
+///
+/// 实测（2026-11）：这个接口**只返回前 30 条**，`page` 与 `size` 都被服务端忽略
+/// （page=2/3、size=100/500 拿到的都是同一批 30 条），所以调用方不要做翻页。
+/// 排序由 `sortType` 控制，1=综合（相关度）、2=最多播放、5=最新发布；
+/// 传 `sortField` 无效。
 /// </summary>
 public class SearchService
 {
@@ -16,13 +21,15 @@ public class SearchService
         _api = api;
     }
 
-    public async Task<SearchResult> SearchVideosAsync(string keyword, int page = 1, int size = 20, CancellationToken ct = default)
+    public async Task<SearchResult> SearchVideosAsync(
+        string keyword,
+        SearchSort sort = SearchSort.Relevance,
+        CancellationToken ct = default)
     {
         var query = new Dictionary<string, string>
         {
             ["keyword"] = keyword,
-            ["page"] = page.ToString(),
-            ["size"] = size.ToString()
+            ["sortType"] = ((int)sort).ToString()
         };
 
         var response = await _api.GetAsync<SearchVideoResponse>("/rest/pc-direct/search/video", query, ct);
@@ -63,6 +70,19 @@ public class SearchResult
 {
     public long Total { get; set; }
     public List<Models.VideoItem> Items { get; } = new();
+}
+
+/// <summary>搜索排序；数值就是接口的 <c>sortType</c></summary>
+public enum SearchSort
+{
+    /// <summary>综合（相关度）</summary>
+    Relevance = 1,
+
+    /// <summary>最多播放（播放量递减）</summary>
+    MostViewed = 2,
+
+    /// <summary>最新发布（投稿时间递减）</summary>
+    Newest = 5,
 }
 
 public class SearchVideoResponse

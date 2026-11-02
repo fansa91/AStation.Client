@@ -107,28 +107,39 @@
                 TextTrimming="CharacterEllipsis"
                 TextWrapping="Wrap" />
 
-            <StackPanel
+            <!--
+                副标题 + 元信息：用 Grid 而不是横向 StackPanel —— StackPanel 给子项的可用宽度是无限，
+                长作者名不会省略、会把播放量顶出卡片。这里副标题吃 * 自己截断，元信息 Auto 不缩。
+            -->
+            <Grid
                 Grid.Row="2"
-                Orientation="Horizontal"
-                Spacing="6">
+                ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <TextBlock
                     x:Name="SubtitleText"
+                    Grid.Column="0"
                     MaxLines="1"
                     Style="{StaticResource MetaTextStyle}"
                     Text="{x:Bind Subtitle, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
                 <TextBlock
                     x:Name="MetaDot"
+                    Grid.Column="1"
                     Style="{StaticResource MetaTextStyle}"
                     Text="·"
                     Visibility="Collapsed" />
                 <TextBlock
                     x:Name="MetaText"
+                    Grid.Column="2"
                     MaxLines="1"
                     Style="{StaticResource MetaTextStyle}"
                     Text="{x:Bind Meta, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
-            </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

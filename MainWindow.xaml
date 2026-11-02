@@ -94,7 +94,7 @@
                     MaxWidth="520"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
-                    PlaceholderText="搜索视频、用户、番剧"
+                    PlaceholderText="搜索视频"
                     QueryIcon="Find"
                     QuerySubmitted="SearchBox_QuerySubmitted"
                     TextChanged="SearchBox_TextChanged" />

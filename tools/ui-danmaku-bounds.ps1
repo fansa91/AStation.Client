@@ -11,7 +11,7 @@ $win = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond)
 
 # 已知的页面固定文案，其余文本视为弹幕
 $known = @(
-    'AStation.Client', '搜索视频、用户、番剧', '已用时间', '剩余时间',
+    'AStation.Client', '搜索视频', '已用时间', '剩余时间',
     '《银松镇》是今年我最看好的独立游戏', 'SteamParty', '视频简介', '分P', '银松镇'
 )
 

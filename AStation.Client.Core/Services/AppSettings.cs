@@ -58,6 +58,10 @@ public class AppSettings
     /// <summary>首页 / 列表每次加载条数</summary>
     public int PageSize { get; set; } = 20;
 
+    // ── 搜索 ──
+    /// <summary>最近搜索关键词（最新在前，最多 8 条，搜索页做建议与快捷入口）</summary>
+    public List<string> SearchHistory { get; set; } = new();
+
     [JsonIgnore]
     public static string SettingsPath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -130,6 +134,7 @@ public class AppSettings
         LiveHardwareDecode = defaults.LiveHardwareDecode;
         PreferBackupCdn = defaults.PreferBackupCdn;
         PageSize = defaults.PageSize;
+        SearchHistory = new List<string>();
         Save();
     }
 }

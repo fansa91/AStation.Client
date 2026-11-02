@@ -120,7 +120,7 @@ Start-Sleep -Seconds 7
 Log '=== 1440x900 ==='
 Resize 1440 900
 Log "  导航: $(Nav-State)"
-Log ("  搜索框: " + $(if (Find-El '搜索视频、用户、番剧' 'Edit') { '在' } else { '不在' }))
+Log ("  搜索框: " + $(if (Find-El '搜索视频' 'Edit') { '在' } else { '不在' }))
 Log ("  应用名 AStation: " + $(if (Find-El 'AStation' 'Text') { '在' } else { '不在（隐藏）' }))
 Shot 'win-1440.png'
 
@@ -135,7 +135,7 @@ Shot 'win-1100.png'
 Log '=== 880x660 ==='
 Resize 880 660
 Log "  导航: $(Nav-State)"
-Log ("  搜索输入框: " + $(if (Find-El '搜索视频、用户、番剧' 'Edit') { '在（未收起）' } else { '已收起' }))
+Log ("  搜索输入框: " + $(if (Find-El '搜索视频' 'Edit') { '在（未收起）' } else { '已收起' }))
 Log ("  搜索图标按钮: " + $(if (Find-El '搜索' 'Button') { '在' } else { '不在' }))
 Shot 'win-880.png'
 

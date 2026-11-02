@@ -212,9 +212,20 @@ if ($edit) {
         Send-Key 0x0D   # Enter
         Start-Sleep -Milliseconds 5000
         Shot 'search-1440.png'
-        Log ("  结果条数提示: " + $(if (Find-Containing '条结果') { '有' } else { '无' }))
-        Log ("  加载更多按钮: " + $(if (Find-El '加载更多' 'Button') { '有' } else { '无' }))
+        Log ("  结果统计: " + $(if (Find-Containing '显示前') { '有' } else { '无' }))
+        Log ("  排序分页：综合=" + $(if (Find-El '综合排序' 'Button') { '在' } else { '缺' }) +
+             " 最多播放=" + $(if (Find-El '最多播放' 'Button') { '在' } else { '缺' }) +
+             " 最新发布=" + $(if (Find-El '最新发布' 'Button') { '在' } else { '缺' }))
         Log ("  空态/失败态: " + $(if (Find-Containing '没有找到相关视频') { '空态' } else { '有结果' }))
+
+        # 切到「最多播放」：请求要重发，结果区不能残留旧的「综合」列表
+        $views = Find-El '最多播放' 'Button'
+        if ($views) {
+            Click-El $views
+            Start-Sleep -Milliseconds 4500
+            Shot 'search-sort-views.png'
+            Log ("  切到最多播放后统计: " + $(if (Find-Containing '显示前') { '有' } else { '无' }))
+        }
     } else {
         Log '  WARN: 搜索框不支持 ValuePattern'
     }
