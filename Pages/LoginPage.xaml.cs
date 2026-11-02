@@ -267,6 +267,7 @@ public sealed partial class LoginPage : Page
 
                 // 通知外壳刷新账号区
                 AccountState.MarkLoggedIn();
+                SessionStore.Save(ServiceLocator.Api);
 
                 // 关闭覆盖层
                 CloseOverlayAfterDelay();
@@ -409,6 +410,9 @@ public sealed partial class LoginPage : Page
                 string? displayName = string.IsNullOrWhiteSpace(result.UserName) ? username : result.UserName;
                 string? avatar = string.IsNullOrWhiteSpace(result.Avatar) ? null : result.Avatar;
                 AccountState.MarkLoggedIn(displayName, avatar);
+
+                // Cookie 就是会话本钱：不落盘的话重开应用就变成假登录
+                SessionStore.Save(ServiceLocator.Api);
 
                 // signin 偶尔不回昵称/头像，再拿一次 personalInfo 补齐（失败不影响登录结果）
                 _ = RefreshProfileAsync();

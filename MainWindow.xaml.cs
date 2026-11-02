@@ -57,6 +57,17 @@ public sealed partial class MainWindow : Window
         AccountState.Changed += (_, _) => RefreshAccountUi();
         RefreshAccountUi();
 
+        // 把上次的会话灌回 Cookie 容器，再去人肉验一次：
+        // account.json 只是「我上次登录过」的标记，Cookie 过期后它是会骗人的
+        SessionStore.Load(ServiceLocator.Api);
+        if (AccountState.IsLoggedIn) _ = VerifySessionAsync();
+
+        // 关窗前再写一次：逛了半个小时后服务端可能已经把 Cookie 的过期时间续过了
+        Closed += (_, _) =>
+        {
+            if (AccountState.IsLoggedIn) SessionStore.Save(ServiceLocator.Api);
+        };
+
         StartWindowGeometryTracking();
         ApplyInitialWindowSize();
 
@@ -319,6 +330,37 @@ public sealed partial class MainWindow : Window
     private void AccountButton_Click(object sender, RoutedEventArgs e)
     {
         OpenAccount();
+    }
+
+    /// <summary>
+    /// 开机自检会话：本地有登录标记时，先用 personalInfo 探一次 Cookie 还活着没有。
+    /// 失败说明 Cookie 过期 / 文件没了 —— 把假登录撤掉，免得用户点收藏才发现 401。
+    /// 网络错误（抛异常）不算失效，不清状态。
+    /// </summary>
+    private async Task VerifySessionAsync()
+    {
+        try
+        {
+            var profile = await ServiceLocator.Login.GetProfileAsync();
+
+            if (profile?.Result == 0 && profile.Info is not null)
+            {
+                AccountState.UpdateProfile(profile.Info.UserName, profile.Info.HeadUrl);
+                SessionStore.Save(ServiceLocator.Api);   // 服务端续过期后回写一次
+                return;
+            }
+
+            // -401 才是「没登录」；其它错误码（风控、服务端抖动）先别动用户状态
+            if (profile?.Result == -401)
+            {
+                SessionStore.Clear(ServiceLocator.Api);
+                AccountState.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("MainWindow.VerifySession", ex);
+        }
     }
 
     private void OpenAccount()

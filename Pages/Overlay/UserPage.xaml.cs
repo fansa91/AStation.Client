@@ -54,6 +54,8 @@ public sealed partial class UserPage : Page
 
     private void LogoutButton_Click(object sender, RoutedEventArgs e)
     {
+        // 标记、Cookie 文件、容器里的 Cookie 三样一起清，否则下次启动又被灌回来
+        SessionStore.Clear(ServiceLocator.Api);
         AccountState.Clear();
         Refresh();
     }

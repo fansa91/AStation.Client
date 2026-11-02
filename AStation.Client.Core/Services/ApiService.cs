@@ -204,7 +204,10 @@ public class ApiService : IDisposable
     /// </summary>
     public void SaveCookies(string path)
     {
+        var now = DateTime.UtcNow;
         var list = _cookieContainer.GetAllCookies().Cast<Cookie>()
+            // 已经过期 / 被置为失效的不必再存，省得下次启动灌回来一堆废条目
+            .Where(c => !c.Expired && (c.Expires == DateTime.MinValue || c.Expires.ToUniversalTime() > now))
             .Select(c => new PersistedCookie
             {
                 Name = c.Name,
@@ -257,6 +260,28 @@ public class ApiService : IDisposable
             }
         }
         return loaded;
+    }
+
+    /// <summary>
+    /// 清空容器里的全部 Cookie（退出登录用），返回清掉的条数。
+    /// <see cref="CookieContainer"/> 没有提供 Clear，只能逐条置为已过期，容器会自行移除。
+    /// </summary>
+    public int ClearCookies()
+    {
+        int removed = 0;
+        foreach (Cookie cookie in _cookieContainer.GetAllCookies())
+        {
+            try
+            {
+                cookie.Expired = true;
+                removed++;
+            }
+            catch
+            {
+                // 个别 Cookie（例如 Secure/域不合法）删不掉就算了
+            }
+        }
+        return removed;
     }
 
     private sealed class PersistedCookie

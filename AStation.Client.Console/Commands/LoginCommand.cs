@@ -7,7 +7,8 @@ namespace AStation_Client.Cli.Commands;
 ///
 /// AcFun 的会话是 Cookie，命令行每次都是新进程，所以登录成功后把 Cookie
 /// 落到 <c>%LOCALAPPDATA%\AStation.Client\cli-cookies.json</c>，
-/// 之后用 <c>whoami</c>（或带 <c>--cookies</c> 的其它命令）复用。
+/// 之后用 <c>whoami</c>（或带 <c>--cookies</c> 的其它命令）复用；
+/// 在桌面端登录过的话，<c>whoami</c> 也会自己去读桌面端那份 <c>cookies.json</c>。
 ///
 /// 例：
 ///   login --username 13800000000 --password ***          自动取验证码、存图、提示输入
@@ -143,7 +144,7 @@ public static class LoginCommand
 
     public static async Task<int> WhoAmIAsync(CliArgs args)
     {
-        string cookiePath = args.Get("cookies") ?? DefaultCookiePath;
+        string cookiePath = ResolveCookiePath(args.Get("cookies"));
         int loaded = ServiceLocator.Api.LoadCookies(cookiePath);
 
         var profile = await ServiceLocator.Login.GetProfileAsync(CliContext.Token);
@@ -186,6 +187,19 @@ public static class LoginCommand
     }
 
     private static string DefaultCaptchaPath() => Path.Combine(Path.GetTempPath(), "astation-captcha.png");
+
+    /// <summary>
+    /// whoami 读哪份 Cookie：优先 --cookies，其次命令行自己存的，
+    /// 最后回退到桌面端那份（在界面里登录过就不用再登一遍）。
+    /// </summary>
+    private static string ResolveCookiePath(string? explicitPath)
+    {
+        if (!string.IsNullOrWhiteSpace(explicitPath)) return explicitPath;
+        if (File.Exists(DefaultCookiePath)) return DefaultCookiePath;
+
+        var desktop = SessionStore.CookiePath;
+        return File.Exists(desktop) ? desktop : DefaultCookiePath;
+    }
 
     private static void WriteCaptchaImage(string dataUri, string path)
     {

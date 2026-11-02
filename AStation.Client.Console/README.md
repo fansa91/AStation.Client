@@ -47,6 +47,7 @@ AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe help
 AcFun 的登录态是 **Cookie**，没有独立 token。命令行每次都是新进程，
 所以 `login` 成功后会把 Cookie 落到 `%LOCALAPPDATA%\AStation.Client\cli-cookies.json`，
 后续用 `whoami`（或 `--cookies <路径>`）复用。
+桌面端登录过的话，`whoami` 会自动回退去读它那份 `cookies.json`，不必再登一遍。
 
 ```bash
 # 交互式：自动取验证码、存成 PNG、提示你输入图中的字符
