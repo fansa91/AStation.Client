@@ -40,6 +40,9 @@ public sealed class EmoteCatalog
 
     public int Count => _byId.Count;
 
+    /// <summary>全部表情（按 id 升序），供命令行工具 / 调试查看</summary>
+    public IReadOnlyList<EmoteEntry> Entries => _byId.Values.OrderBy(e => e.Id).ToList();
+
     /// <summary>字典首次加载完成后触发，供控件重渲染</summary>
     public event EventHandler? Loaded;
 

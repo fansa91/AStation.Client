@@ -69,8 +69,9 @@ AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直�
 **其他**
 
 - 评论楼中楼展开
-- 分 P 与选集、相关视频
+- 分 P 与选集、相关视频；右栏分页切换带淡入上移过渡
 - 设置项：主题（跟随系统 / 锁定浅色深色）、侧边栏常驻、默认清晰度、自动播放、继续上次进度、优先备用 CDN
+- 窗口尺寸、位置与最大化状态退出后记住，下次启动还原（记录的位置落在屏幕外时自动居中）
 
 ## 下载
 
@@ -106,6 +107,41 @@ dotnet publish AStation.Client.csproj -c Release -r win-x64 \
 dotnet test AStation.Client.Tests/AStation.Client.Tests.csproj
 ```
 
+## 命令行工具
+
+`AStation.Client.Console` 是一个独立的命令行项目，只引用 `AStation.Client.Core`，用同一套服务层直接打接口——查接口、验数据、批量下载都不必开界面。也可以当成「Core 的 API 使用示例」来读：每个命令对应一个 Service 调用。
+
+```bash
+# 构建
+dotnet build AStation.Client.Console/AStation.Client.Console.csproj -c Debug
+# 产物：AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe
+
+# 搜索（sortType：1 综合 / 2 最多播放 / 5 最新发布）
+AStation.Client.Console.exe search 猫 --sort 2 --limit 10
+
+# 视频详情、评论、弹幕
+AStation.Client.Console.exe video 3261720
+AStation.Client.Console.exe comments 3261720 --page 1 --limit 10
+AStation.Client.Console.exe danmaku 4494978 --limit 20     # 用分P 的 videoId，不是 acId
+
+# 榜 / 番剧 / 直播
+AStation.Client.Console.exe rank --channel 0 --period week
+AStation.Client.Console.exe bangumi list
+AStation.Client.Console.exe live play 934542 7b_30oOFkR8
+
+# 取流与下载（HLS 分片会自动带上清单的签名 query）
+AStation.Client.Console.exe play 3261720
+AStation.Client.Console.exe download 3261720 --quality 720 -o cat.ts --mp4
+
+# 调试用：UBB 正文解析、表情字典
+AStation.Client.Console.exe ubb "好耶[emot=acfun,1738/]"
+AStation.Client.Console.exe emotes --keyword 笑
+```
+
+所有命令都支持 `--json`（输出原始结构，可直接接 `jq`）。完整用法见 `AStation.Client.Console.exe help`。
+
+> 本机 .NET 不在默认路径时，运行前需要 `$env:DOTNET_ROOT='C:\dotnet'`（或把 `C:\dotnet` 加进 PATH）。
+
 ## 版本与发布
 
 版本号由 git tag 驱动，形如 `v0.1.0`。打 tag 推送后 GitHub Actions 会自动构建两个变体并发布 Release：
@@ -121,9 +157,10 @@ git push origin v0.1.0
 .
 ├── AStation.Client/          WinUI 3 界面（页面、控件、转换器）
 │   ├── Styles/               设计令牌（Tokens.xaml）+ 共享控件样式（Controls.xaml）
-│   ├── Controls/             MediaCard / StatePanel / PlayerOverlay / DanmakuPanel
-│   └── Pages/                主页面 + Overlay/（搜索、登录、用户空间）
-├── AStation.Client.Core/     纯 .NET 服务与模型，可单测
+│   ├── Controls/             MediaCard / StatePanel / PlayerOverlay / DanmakuPanel / UbbText
+│   └── Pages/                主页面 + Overlay/（登录、用户空间）
+├── AStation.Client.Core/     纯 .NET 服务与模型，可单测（界面与命令行共用）
+├── AStation.Client.Console/  命令行工具，直接调用 Core 的接口层（见下文「命令行工具」）
 ├── AStation.Client.Tests/    xUnit 测试，只引用 Core
 ├── docs/                     布局改造方案（ui-layout-plan.md）、README 截图
 ├── tools/                    本地 UI 自动化验证脚本、图标生成脚本（make-icon.py）
@@ -149,7 +186,7 @@ git push origin v0.1.0
 
 **内容页**：首页 = 榜单 Hero（16:9 主图 + 右侧三条）+ 分区胶囊条 + 推荐网格（`ItemsRepeater` + `UniformGridLayout`）；番剧用 3:4 封面卡片；排行榜行高统一 76；卡片一律走 `Controls/MediaCard`（封面比例、角标、悬停只变底色和描边）。
 
-**覆盖层**：搜索 / 登录 / 用户空间共用一个壳（scrim + 居中卡片，最宽 880 / 最高 760，随窗口收缩，Esc 或点遮罩关闭）。壳挂在窗口根节点而不是 `NavigationView` 内部，这样遮罩能盖住标题栏与导航，也不会因禁用导航把覆盖层自己的控件一起变灰。
+**覆盖层**：登录 / 用户空间共用一个壳（scrim + 居中卡片，最宽 880 / 最高 760，随窗口收缩，Esc 或点遮罩关闭）。壳挂在窗口根节点而不是 `NavigationView` 内部，这样遮罩能盖住标题栏与导航，也不会因禁用导航把覆盖层自己的控件一起变灰。搜索不走覆盖层——它是 `MainFrame` 里的独立页面，进后退栈，回到搜索页保留关键词、排序与滚动位置。
 
 **状态**：所有列表页统一用 `Controls/StatePanel`（加载 / 空 / 失败 + 重试），覆盖层形式呈现，状态切换不顶动页面布局。
 
@@ -165,8 +202,7 @@ git push origin v0.1.0
 
 - 扫码登录不可用（AcFun 扫码接口签了客户端指纹，第三方无法完成），只支持账号密码登录
 - 楼中楼只能拿到每个主楼的前 3 条回复，官方没有「更多回复」接口
-- 评论表情码（`[emot=acfun,...]`）暂未渲染成图片
-- 搜索只覆盖视频（用户 / 番剧的搜索接口返回 HTML 页，未接入）
+- 搜索只覆盖视频（用户 / 番剧的搜索接口返回 HTML 页，未接入），且接口只下发前 30 条
 - 用户空间页目前是骨架：只显示登录态与退出登录，作品/收藏列表未接入
 - 播放器暂无键盘快捷键，只有 `Esc` 退出全屏
 - 直播间弹幕数据通道（快手 `zt.live` 的 protobuf 长连接）尚未接入：播放器里的弹幕层与开关已就位，当前不会显示弹幕

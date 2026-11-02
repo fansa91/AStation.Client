@@ -33,7 +33,7 @@
     <!-- Windows App SDK 运行时自包含：把 WinAppRuntime DLL 复制到输出目录，
          无需在系统上预装 Windows App Runtime 框架包 -->
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <DefaultItemExcludes>$(DefaultItemExcludes);AStation.Client.Core\**;AStation.Client.Tests\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);AStation.Client.Core\**;AStation.Client.Tests\**;AStation.Client.Console\**</DefaultItemExcludes>
 
     <!-- FFmpegInteropX 的 nuget 包会带一个 winmd，默认会让 CsWinRT 重新生成一次投影
          （cswinrt.exe 要求本机注册过 Windows SDK，这里没有，构建日志会报 Could not find the Windows SDK）。
