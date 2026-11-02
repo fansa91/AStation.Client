@@ -211,7 +211,7 @@ public sealed partial class MainWindow : Window
 
     private void SearchIconButton_Click(object sender, RoutedEventArgs e)
     {
-        OpenOverlay(typeof(SearchPage));
+        NavigateToSearch(null);
     }
 
     // ───────────── 账号区 ─────────────
@@ -304,14 +304,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>从覆盖层里跳主页面：先收覆盖层，再带着参数导航（搜索结果点卡片用）</summary>
-    public void OpenMainPageFromOverlay(Type pageType, object? parameter)
-    {
-        CloseOverlay();
-        MainFrame.Navigate(pageType, parameter);
-        BackButton.IsEnabled = MainFrame.CanGoBack;
-    }
-
     /// <summary>在主 Frame 打开页面（关闭覆盖层）</summary>
     private void OpenMainPage(Type pageType)
     {
@@ -330,6 +322,14 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void SyncNavSelection(Type pageType)
     {
+        // 搜索页不是侧栏项（跳转页，随时可能从任何页面进来）。清掉高亮：
+        // 既不会出现「人在搜索页、高亮却停在首页」，也保证回点首页能触发切换。
+        if (pageType == typeof(SearchPage))
+        {
+            NavView.SelectedItem = null;
+            return;
+        }
+
         string? tag = pageType switch
         {
             var t when t == typeof(HomePage) => "home",
@@ -417,9 +417,28 @@ public sealed partial class MainWindow : Window
     {
         if (!string.IsNullOrWhiteSpace(args.QueryText))
         {
+            string keyword = args.QueryText.Trim();
             SearchBox.Text = string.Empty;
-            OpenOverlay(typeof(SearchPage), args.QueryText.Trim());
+            NavigateToSearch(keyword);
         }
+    }
+
+    /// <summary>
+    /// 打开搜索页（跳转页，不再是覆盖层）。
+    /// 已经在搜索页时原地换词重搜，不往后退栈里叠第二个搜索页。
+    /// </summary>
+    private void NavigateToSearch(string? keyword)
+    {
+        if (MainFrame.Content is SearchPage current)
+        {
+            if (string.IsNullOrWhiteSpace(keyword)) current.FocusInput();
+            else current.SearchFromExternal(keyword);
+            return;
+        }
+
+        CloseOverlay();
+        MainFrame.Navigate(typeof(SearchPage), string.IsNullOrWhiteSpace(keyword) ? null : keyword);
+        BackButton.IsEnabled = MainFrame.CanGoBack;
     }
 
     private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)

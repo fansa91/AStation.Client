@@ -153,26 +153,29 @@ if ($hamburger) {
     Log '  WARN: 找不到汉堡按钮'
 }
 
-# ── 覆盖层：点搜索图标 ──
-Log '--- 覆盖层（搜索） ---'
+# ── 跳转页：点搜索图标 → 搜索页（不是覆盖层） ──
+Log '--- 跳转页（搜索） ---'
 $searchBtn = Find-El '搜索' 'Button'
 if ($searchBtn) {
     Click-El $searchBtn
-    Start-Sleep -Milliseconds 1500
-    Shot 'win-overlay-search.png'
-    $esc = Find-El '搜索' 'Text'
-    Log ("  覆盖层内「搜索」标题: " + $(if ($esc) { '在' } else { '不在' }))
+    Start-Sleep -Milliseconds 1800
+    Shot 'win-search-page.png'
+    Log ("  搜索页「搜索」标题: " + $(if (Find-El '搜索' 'Text') { '在' } else { '不在' }))
+    Log ("  搜索页输入框: " + $(if (Find-El '搜索视频，回车查看结果' 'Edit') { '在' } else { '不在' }))
+    Log ("  空态提示: " + $(if (Find-El '搜索 AcFun 视频' 'Text') { '在' } else { '不在' }))
+
+    # 后退：搜索页是压进主框架的，后退应回到首页
+    $back = Find-El '后退' 'Button'
+    Log ("  后退按钮可用: " + $(if ($back -and $back.Current.IsEnabled) { '是' } else { '否' }))
+    if ($back) {
+        Click-El $back
+        Start-Sleep -Milliseconds 1500
+        Log ("  后退回首页: " + $(if (Find-El '推荐视频' 'Text') { '是' } else { '否' }))
+        Shot 'win-search-back.png'
+    }
 } else {
     Log '  WARN: 找不到搜索按钮'
 }
-
-# ── Esc 关闭覆盖层 ──
-Add-Type -AssemblyName System.Windows.Forms
-[W]::SetForegroundWindow((Get-App).MainWindowHandle) | Out-Null
-Start-Sleep -Milliseconds 300
-[System.Windows.Forms.SendKeys]::SendWait('{ESC}')
-Start-Sleep -Milliseconds 900
-Shot 'win-overlay-closed.png'
 
 # ── 回到 1440 检查内容限宽 ──
 Log '=== 回到 1440，检查导航恢复 ==='

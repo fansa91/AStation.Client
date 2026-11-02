@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="AStation_Client.Pages.SearchPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:AStation_Client.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:AStation_Client.Models"
+    mc:Ignorable="d">
+
+    <!--
+        搜索页（跳转页，不再是覆盖层）：
+          Row0 固定头部 —— 标题 + 结果条数 / 搜索框 / 排序
+          Row1 结果区   —— 自己滚动，头部不跟着走（滚到底也能改排序）
+    -->
+    <Grid x:Name="PageRoot" Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border
+            x:Name="HeaderBar"
+            Grid.Row="0"
+            Padding="24,20,24,14"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1">
+            <StackPanel Spacing="12">
+
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource PageTitleTextStyle}"
+                        Text="搜索" />
+
+                    <!-- 条数常驻在标题行：滚到底也看得到这轮一共搜出多少 -->
+                    <TextBlock
+                        x:Name="ResultCountText"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource MetaTextStyle}" />
+                </Grid>
+
+                <!--
+                    第二行：输入框在左（星列限宽 560），排序紧随其后。
+                    直接给 AutoSuggestBox 设 Stretch+MaxWidth 会被居中，与左贴齐的排版打架，
+                    所以限宽交给星列的 MaxWidth。
+                -->
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MaxWidth="560" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <AutoSuggestBox
+                        x:Name="SearchInput"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        MaxSuggestionListHeight="260"
+                        PlaceholderText="搜索视频，回车查看结果"
+                        QueryIcon="Find"
+                        QuerySubmitted="SearchInput_QuerySubmitted"
+                        TextChanged="SearchInput_TextChanged" />
+
+                    <!--
+                        排序：搜过一次之后才出现。
+                        接口只下发前 30 条（page/size 被服务端忽略），条数行如实写「显示前 N 条」，
+                        不做「加载更多」——否则只会把第一页重复追加。
+                    -->
+                    <Grid
+                        x:Name="SortBar"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        ColumnSpacing="8"
+                        Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <ToggleButton
+                            x:Name="SortRelevance"
+                            AutomationProperties.Name="综合排序"
+                            Click="Sort_Click"
+                            Content="综合"
+                            IsChecked="True"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                        <ToggleButton
+                            x:Name="SortMostViewed"
+                            Grid.Column="1"
+                            AutomationProperties.Name="最多播放"
+                            Click="Sort_Click"
+                            Content="最多播放"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                        <ToggleButton
+                            x:Name="SortNewest"
+                            Grid.Column="2"
+                            AutomationProperties.Name="最新发布"
+                            Click="Sort_Click"
+                            Content="最新发布"
+                            Style="{StaticResource SegmentTabButtonStyle}" />
+                    </Grid>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <ScrollViewer
+                x:Name="ResultScroll"
+                Padding="24,18,24,24"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto">
+                <ItemsRepeater x:Name="ResultList">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout
+                            ItemsStretch="Fill"
+                            MinColumnSpacing="16"
+                            MinItemHeight="204"
+                            MinItemWidth="196"
+                            MinRowSpacing="20" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:VideoItem">
+                            <controls:MediaCard
+                                Click="ResultCard_Click"
+                                Cover="{x:Bind Thumbnail}"
+                                Meta="{x:Bind ViewCount}"
+                                Payload="{x:Bind ResourceId}"
+                                Subtitle="{x:Bind Author}"
+                                Title="{x:Bind Title}"
+                                TopRightBadge="{x:Bind Duration}" />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollViewer>
+
+            <!-- 加载 / 空 / 失败统一三态（叠在结果区上，不顶动布局） -->
+            <controls:StatePanel
+                x:Name="SearchState"
+                ActionClick="SearchState_ActionClick" />
+
+            <!-- 初始态：还没搜过。带最近搜索，避免对着空框发呆 -->
+            <Grid x:Name="EmptyPanel">
+                <StackPanel
+                    MaxWidth="480"
+                    Margin="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="10">
+                    <FontIcon
+                        Margin="0,0,0,2"
+                        HorizontalAlignment="Center"
+                        FontSize="34"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE721;" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource SectionTitleTextStyle}"
+                        Text="搜索 AcFun 视频"
+                        TextAlignment="Center" />
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        Style="{StaticResource MetaTextStyle}"
+                        Text="输入关键词后回车查看结果。搜索目前只覆盖视频。"
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+
+                    <StackPanel
+                        x:Name="HistorySection"
+                        Margin="0,14,0,0"
+                        Spacing="10"
+                        Visibility="Collapsed">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource MetaTextStyle}"
+                            Text="最近搜索" />
+                        <ItemsRepeater x:Name="HistoryChips" HorizontalAlignment="Center">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Orientation="Horizontal" Spacing="8" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
+                                <DataTemplate>
+                                    <Button
+                                        Click="HistoryChip_Click"
+                                        Style="{StaticResource ChipButtonStyle}"
+                                        Tag="{Binding}">
+                                        <TextBlock
+                                            MaxWidth="118"
+                                            Text="{Binding}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Grid>
+</Page>

@@ -6,7 +6,7 @@ using AStation_Client.Controls;
 using AStation_Client.Models;
 using AStation_Client.Services;
 
-namespace AStation_Client.Pages.Overlay;
+namespace AStation_Client.Pages;
 
 public sealed partial class SearchPage : Page
 {
@@ -30,6 +30,10 @@ public sealed partial class SearchPage : Page
     {
         InitializeComponent();
         ResultList.ItemsSource = Results;
+
+        // 从结果进播放页再后退回来时保留已加载的结果与滚动位置，不用重搜一遍
+        NavigationCacheMode = NavigationCacheMode.Enabled;
+
         Loaded += (_, _) => SearchInput.Focus(FocusState.Programmatic);
     }
 
@@ -40,15 +44,45 @@ public sealed partial class SearchPage : Page
 
         LoadHistory();
 
-        if (e.Parameter is string keyword && !string.IsNullOrWhiteSpace(keyword))
+        string keyword = (e.Parameter as string)?.Trim() ?? string.Empty;
+
+        if (keyword.Length == 0)
         {
-            SearchInput.Text = keyword;
-            _ = SearchAsync(keyword.Trim());
+            // 后退回来时保留上次结果，别把页面清成初始态
+            if (!_searched) ShowInitial();
+            return;
         }
-        else
+
+        // 缓存命中（后退）且关键词没变：沿用现有结果，不重复请求
+        if (e.NavigationMode == NavigationMode.Back &&
+            _searched &&
+            string.Equals(keyword, _keyword, StringComparison.Ordinal))
         {
-            ShowInitial();
+            return;
         }
+
+        SearchInput.Text = keyword;
+        _ = SearchAsync(keyword);
+    }
+
+    /// <summary>已经在搜索页时，标题栏再次提交关键词走这里：原地换词重搜，不叠新页面</summary>
+    public void SearchFromExternal(string keyword)
+    {
+        keyword = keyword.Trim();
+        if (keyword.Length == 0)
+        {
+            FocusInput();
+            return;
+        }
+
+        SearchInput.Text = keyword;
+        _ = SearchAsync(keyword);
+    }
+
+    /// <summary>已经在搜索页时点搜索图标：把焦点交还给页面里的输入框</summary>
+    public void FocusInput()
+    {
+        SearchInput.Focus(FocusState.Programmatic);
     }
 
     // ───────────────────────────── 搜索 ─────────────────────────────
@@ -214,15 +248,11 @@ public sealed partial class SearchPage : Page
         await LoadAsync();
     }
 
-    /// <summary>点结果卡片：关掉覆盖层，在主框架打开播放页</summary>
+    /// <summary>点结果卡片：在当前框架压入播放页（后退即回到这批结果）</summary>
     private void ResultCard_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not MediaCard { Payload: string id } || string.IsNullOrWhiteSpace(id)) return;
-
-        if (App.MainWindowInstance is MainWindow window)
-        {
-            window.OpenMainPageFromOverlay(typeof(VideoPage), id);
-        }
+        Frame.Navigate(typeof(VideoPage), id);
     }
 
     // ───────────────────────────── 最近搜索 ─────────────────────────────

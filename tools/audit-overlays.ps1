@@ -199,8 +199,8 @@ if ($acc) {
     Log '  WARN: 找不到底部「登录」导航项'
 }
 
-# ── 搜索（标题栏搜索框提交 → 覆盖层结果页） ──
-Log '=== 搜索 ==='
+# ── 搜索（标题栏搜索框提交 → 独立搜索页，跳转而非覆盖层） ──
+Log '=== 搜索（跳转页） ==='
 $edit = Get-TopEdit
 if ($edit) {
     Click-El $edit
@@ -212,6 +212,11 @@ if ($edit) {
         Send-Key 0x0D   # Enter
         Start-Sleep -Milliseconds 5000
         Shot 'search-1440.png'
+
+        # 跳转页证据：标题栏后退变可用（覆盖层时代是不变的）
+        $back = Find-El '后退' 'Button'
+        Log ("  后退按钮可用（说明是压进框架的页面）: " + $(if ($back -and $back.Current.IsEnabled) { '是' } else { '否' }))
+        Log ("  页内搜索框: " + $(if (Find-El '搜索视频，回车查看结果' 'Edit') { '在' } else { '不在' }))
         Log ("  结果统计: " + $(if (Find-Containing '显示前') { '有' } else { '无' }))
         Log ("  排序分页：综合=" + $(if (Find-El '综合排序' 'Button') { '在' } else { '缺' }) +
              " 最多播放=" + $(if (Find-El '最多播放' 'Button') { '在' } else { '缺' }) +
@@ -226,10 +231,36 @@ if ($edit) {
             Shot 'search-sort-views.png'
             Log ("  切到最多播放后统计: " + $(if (Find-Containing '显示前') { '有' } else { '无' }))
         }
+
+        # 清空关键词 → 页内初始态（最近搜索）
+        $boxes = @(Get-All | Where-Object {
+            $_.Current.ControlType.ProgrammaticName -eq 'ControlType.Edit' -and
+            -not [double]::IsInfinity($_.Current.BoundingRectangle.X) -and
+            $_.Current.BoundingRectangle.Y -gt 80
+        })
+        if ($boxes.Count -gt 0) {
+            Click-El $boxes[0]
+            Start-Sleep -Milliseconds 400
+            $bvp = $null
+            if ($boxes[0].TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$bvp)) {
+                $bvp.SetValue('')
+                Start-Sleep -Milliseconds 1400
+                Shot 'search-initial.png'
+                Log ("  最近搜索区: " + $(if (Find-El '最近搜索' 'Text') { '有' } else { '无' }))
+            }
+        }
+
+        # 后退离开搜索页，验证它确实在框架栈里
+        $back = Find-El '后退' 'Button'
+        if ($back) {
+            Click-El $back
+            Start-Sleep -Milliseconds 1500
+            Log ("  后退后离开搜索页: " + $(if (Find-El '搜索' 'Text') { '否（还在搜索页）' } else { '是' }))
+            Shot 'search-back.png'
+        }
     } else {
         Log '  WARN: 搜索框不支持 ValuePattern'
     }
-    Esc
 } else {
     Log '  WARN: 找不到标题栏搜索框'
 }
