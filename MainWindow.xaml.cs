@@ -356,7 +356,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>在覆盖层打开页面（搜索、登录、用户空间）</summary>
+    /// <summary>在覆盖层打开页面（登录、用户空间）</summary>
     public void OpenOverlay(Type pageType, object? parameter = null)
     {
         // 小窗口下卡片要跟着缩，不能按 880 硬撑

@@ -13,7 +13,7 @@
 
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Light">
-            <!-- 覆盖层遮罩：让打开搜索 / 登录时下方内容明确退后 -->
+            <!-- 覆盖层遮罩：让打开登录 / 用户空间时下方内容明确退后 -->
             <SolidColorBrush x:Key="AppScrimBrush" Color="#4D000000" />
             <!-- 播放器承载面：全屏时用纯黑，窗口模式也保持中性 -->
             <SolidColorBrush x:Key="PlayerBackdropBrush" Color="#FF000000" />
