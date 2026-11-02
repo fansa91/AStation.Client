@@ -1,5 +1,6 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -11,6 +12,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Windows.Media.Core;
 using Windows.Media.Playback;
+using AStation_Client.Controls;
 using AStation_Client.Services;
 using Windows.System;
 
@@ -66,6 +68,9 @@ public sealed partial class VideoPage : Page
     private int _commentTotalPage;
     private long _commentTotalCount;
     private bool _commentsLoaded;
+
+    /// <summary>相关视频是否已经拉过（并行请求，切分页时要区分「还在加载」和「真的没有」）</summary>
+    private bool _relatedLoaded;
     private bool _commentLoading;
     private string _commentCountText = string.Empty;
 
@@ -307,6 +312,7 @@ public sealed partial class VideoPage : Page
         _channelId = string.Empty;
         _commentPage = 0;
         _commentsLoaded = false;
+        _relatedLoaded = false;
         Comments.Clear();
         RelatedVideos.Clear();
         LoadMoreCommentButton.Visibility = Visibility.Collapsed;
@@ -388,11 +394,20 @@ public sealed partial class VideoPage : Page
         // 分P 列表
         _playlistTitle = detail.Parts.Count > 1 ? $"分P（共 {detail.Parts.Count} 个）" : "分P";
         PlaylistTab.Content = "分P";
-        ListCountText.Text = detail.Parts.Count.ToString();
+        // 只有分P分页显示条数；评论 / 相关分页的条数由 SelectSideTab 负责，别在这里盖掉
+        if (_sideTabIndex == 0) ListCountText.Text = detail.Parts.Count.ToString();
 
         for (int i = 0; i < detail.Parts.Count; i++)
         {
             var part = detail.Parts[i];
+
+            // 单 P 视频接口给的 part 标题常常是 "noTitle"，直接用视频标题代替
+            string partTitle = part.Title?.Trim() ?? string.Empty;
+            if (detail.Parts.Count == 1 && (partTitle.Length == 0 || partTitle.Equals("noTitle", StringComparison.OrdinalIgnoreCase)))
+            {
+                partTitle = string.IsNullOrWhiteSpace(detail.Title) ? "正片" : detail.Title;
+            }
+
             var tags = new List<string>();
             if (!string.IsNullOrWhiteSpace(part.DurationText)) tags.Add(part.DurationText);
             if (part.DanmakuCount > 0) tags.Add($"{part.DanmakuCount} 弹幕");
@@ -400,7 +415,7 @@ public sealed partial class VideoPage : Page
             Playlist.Add(new PlaylistEntry
             {
                 IndexText = (i + 1).ToString(),
-                Title = part.Title,
+                Title = partTitle,
                 SubText = string.Join(" · ", tags),
                 Key = part.VideoId
             });
@@ -923,11 +938,26 @@ public sealed partial class VideoPage : Page
 
     private void SideTab_Click(object sender, RoutedEventArgs e)
     {
-        SelectSideTab(ReferenceEquals(sender, RelatedTab) ? 1 : ReferenceEquals(sender, CommentTab) ? 2 : 0);
+        int index = ReferenceEquals(sender, RelatedTab) ? 1 : ReferenceEquals(sender, CommentTab) ? 2 : 0;
+
+        // 再点一次当前分页：ToggleButton 会先把勾去掉，这里补回来并当作无操作，
+        // 否则内容会闪一下、入场动画重播、评论还会重新判一次懒加载
+        if (index == _sideTabIndex)
+        {
+            if (sender is ToggleButton tab) tab.IsChecked = true;
+            return;
+        }
+
+        SelectSideTab(index, animate: true);
     }
 
-    private void SelectSideTab(int index)
+    /// <summary>当前分页：0 分P · 1 相关 · 2 评论</summary>
+    private int _sideTabIndex;
+
+    private void SelectSideTab(int index, bool animate = false)
     {
+        _sideTabIndex = index;
+
         PlaylistTab.IsChecked = index == 0;
         CommentTab.IsChecked = index == 2;
         RelatedTab.IsChecked = index == 1;
@@ -935,6 +965,24 @@ public sealed partial class VideoPage : Page
         EpisodeList.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
         CommentView.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         RelatedList.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        // 只在用户主动切分页时播入场动画，加载过程里重置分页不该闪一下
+        if (animate)
+        {
+            var panel = index switch
+            {
+                1 => (UIElement)RelatedList,
+                2 => CommentView,
+                _ => EpisodeList,
+            };
+            var shift = index switch
+            {
+                1 => RelatedListTransform,
+                2 => CommentViewTransform,
+                _ => EpisodeListTransform,
+            };
+            SideTabTransition.PlayIn(panel, shift);
+        }
 
         ListCountText.Text = index switch
         {
@@ -974,6 +1022,13 @@ public sealed partial class VideoPage : Page
         }
         else
         {
+            // 相关视频是并行的，切过来时可能还在路上 —— 别当成「没有推荐」
+            if (!_relatedLoaded)
+            {
+                SideState.ShowLoading("正在加载相关视频…");
+                return;
+            }
+
             if (RelatedVideos.Count > 0)
             {
                 SideState.Hide();
@@ -1112,6 +1167,7 @@ public sealed partial class VideoPage : Page
     {
         if (_isBangumi || string.IsNullOrWhiteSpace(_channelId))
         {
+            _relatedLoaded = true;
             if (RelatedTab.IsChecked == true) SelectSideTab(1);
             return;
         }
@@ -1121,6 +1177,7 @@ public sealed partial class VideoPage : Page
         RelatedVideos.Clear();
         foreach (var item in list) RelatedVideos.Add(item);
 
+        _relatedLoaded = true;
         if (RelatedTab.IsChecked == true) SelectSideTab(1);
     }
 

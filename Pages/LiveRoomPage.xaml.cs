@@ -1,10 +1,12 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
 using System;
 using System.Threading.Tasks;
+using AStation_Client.Controls;
 using AStation_Client.Services;
 
 namespace AStation_Client.Pages;
@@ -384,16 +386,37 @@ public sealed partial class LiveRoomPage : Page
 
     private void SideTab_Click(object sender, RoutedEventArgs e)
     {
-        SelectSideTab(ReferenceEquals(sender, DanmakuTab) ? 1 : 0);
+        int index = ReferenceEquals(sender, DanmakuTab) ? 1 : 0;
+
+        // 再点一次当前分页：ToggleButton 会先取消勾选，这里补回来并当作无操作
+        if (index == _sideTabIndex)
+        {
+            if (sender is ToggleButton tab) tab.IsChecked = true;
+            return;
+        }
+
+        SelectSideTab(index, animate: true);
     }
 
-    private void SelectSideTab(int index)
+    /// <summary>当前分页：0 清晰度 · 1 弹幕</summary>
+    private int _sideTabIndex;
+
+    private void SelectSideTab(int index, bool animate = false)
     {
+        _sideTabIndex = index;
+
         LineTab.IsChecked = index == 0;
         DanmakuTab.IsChecked = index == 1;
 
         LinePanelContent.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
         DanmakuPanelContent.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (animate)
+        {
+            var panel = index == 1 ? (UIElement)DanmakuPanelContent : LinePanelContent;
+            var shift = index == 1 ? DanmakuPanelTransform : LinePanelTransform;
+            SideTabTransition.PlayIn(panel, shift);
+        }
 
         ListCountText.Text = index == 0 && _streams is { HasStream: true }
             ? $"{_streams.Qualities.Count} 档"

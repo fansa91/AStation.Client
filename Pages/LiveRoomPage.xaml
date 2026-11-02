@@ -275,6 +275,9 @@
                     <Grid Grid.Row="1">
                         <!-- 码率档位 -->
                         <StackPanel x:Name="LinePanelContent" Spacing="8">
+                            <StackPanel.RenderTransform>
+                                <TranslateTransform x:Name="LinePanelTransform" />
+                            </StackPanel.RenderTransform>
                             <TextBlock
                                 FontSize="11"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -296,6 +299,9 @@
                             x:Name="DanmakuPanelContent"
                             Spacing="8"
                             Visibility="Collapsed">
+                            <StackPanel.RenderTransform>
+                                <TranslateTransform x:Name="DanmakuPanelTransform" />
+                            </StackPanel.RenderTransform>
                             <controls:StatePanel x:Name="DanmakuState" />
                         </StackPanel>
                     </Grid>

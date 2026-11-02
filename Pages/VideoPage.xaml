@@ -268,6 +268,9 @@
                     x:Name="CommentView"
                     Visibility="Collapsed"
                     RowSpacing="6">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="CommentViewTransform" />
+                    </Grid.RenderTransform>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
@@ -482,6 +485,9 @@
                             ItemClick="EpisodeList_ItemClick"
                             SelectionMode="Single"
                             ItemContainerStyle="{StaticResource ListViewItemFlushStyle}">
+                            <ListView.RenderTransform>
+                                <TranslateTransform x:Name="EpisodeListTransform" />
+                            </ListView.RenderTransform>
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="pages:PlaylistEntry">
                                     <Grid
@@ -531,6 +537,9 @@
                             SelectionMode="Single"
                             Visibility="Collapsed"
                             ItemContainerStyle="{StaticResource ListViewItemFlushStyle}">
+                            <ListView.RenderTransform>
+                                <TranslateTransform x:Name="RelatedListTransform" />
+                            </ListView.RenderTransform>
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="svc:RelatedVideoItem">
                                     <Grid
