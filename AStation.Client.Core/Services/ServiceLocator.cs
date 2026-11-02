@@ -21,6 +21,8 @@ public static class ServiceLocator
     private static SearchService? _search;
     private static HistoryService? _history;
     private static LiveDanmakuService? _liveDanmaku;
+    private static FavoriteService? _favorite;
+    private static UserProfileService? _userProfile;
 
     public static ApiService Api =>
         _api ??= new ApiService();
@@ -72,4 +74,10 @@ public static class ServiceLocator
     /// <summary>直播间弹幕通道（长连接）</summary>
     public static LiveDanmakuService LiveDanmaku =>
         _liveDanmaku ??= new LiveDanmakuService(Api);
+
+    public static FavoriteService Favorite =>
+        _favorite ??= new FavoriteService(Api);
+
+    public static UserProfileService UserProfile =>
+        _userProfile ??= new UserProfileService(Api);
 }

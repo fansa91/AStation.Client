@@ -24,7 +24,7 @@ if (args.Length > 0 && args[0] is "help" or "-h" or "--help" or "/?")
 }
 
 // 所有命令共用的开关：解析器需要知道哪些是「不带值」的开关
-string[] switchNames = { "json", "raw", "mp4", "h264", "no-config", "force", "f", "help" };
+string[] switchNames = { "json", "raw", "mp4", "h264", "no-config", "no-bangumi", "force", "f", "help" };
 var switches = new HashSet<string>(switchNames, StringComparer.OrdinalIgnoreCase);
 
 // 本地配置文件（格式同 BBDown.config）：里面的参数排在命令行前面，命令行可覆盖
@@ -85,6 +85,9 @@ try
         "download" or "dl" => await DownloadCommand.RunAsync(cli),
         "login" or "signin" => await LoginCommand.LoginAsync(cli),
         "whoami" or "me" => await LoginCommand.WhoAmIAsync(cli),
+        "profile" or "pf" => await UserCommands.ProfileAsync(cli),
+        "favorites" or "fav" => await UserCommands.FavoritesAsync(cli),
+        "history" or "hist" => await UserCommands.HistoryAsync(cli),
         // config 只看命令行本身，不要把配置里的参数混进来
         "config" or "cfg" => ConfigCommand.Run(new CliArgs(rest, switchNames), config),
         _ => Unknown(command),
@@ -147,6 +150,9 @@ void PrintHelp()
     Out.Line();
     Out.Line("其它");
     Out.Line("  emotes               [--keyword 笑] [--limit 30]        表情字典");
+    Out.Line("  profile <userId>                                        用户公开资料（投稿/获赞/关注/粉丝，匿名可调）");
+    Out.Line("  favorites            [--type douga|bangumi|album|article] [--cursor 0] [--count 20]   收藏列表（需登录）");
+    Out.Line("  history              [--page 1] [--size 20] [--no-bangumi]                             播放历史（需登录）");
     Out.Line("  login                --username <手机号/邮箱> --password <密码> [--captcha-code 9gNb]");
     Out.Line("                       [--captcha-image 路径] [--cookies 路径]  账号密码登录（验证码区分大小写）");
     Out.Line("  whoami               [--cookies 路径]                   看当前 Cookie 登录态");

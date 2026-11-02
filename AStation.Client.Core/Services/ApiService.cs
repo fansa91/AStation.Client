@@ -351,6 +351,44 @@ public class ApiService : IDisposable
         return await SendAsync<T>(request, ct, ensureSuccess: false);
     }
 
+    /// <summary>
+    /// POST 表单（允许重复键），4xx/5xx 也当正常响应解析。
+    /// 播放历史的 resourceTypes 要传两次，未登录又是 401 + JSON 正文，
+    /// 两个条件叠在一起，需要这个组合重载。
+    /// </summary>
+    public async Task<T?> PostFormAllowErrorAsync<T>(string path, IEnumerable<KeyValuePair<string, string>> formData, CancellationToken ct = default)
+    {
+        var url = BuildUrl(BaseHost, path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+        return await SendAsync<T>(request, ct, ensureSuccess: false);
+    }
+
+    /// <summary>
+    /// 向指定域名 POST 表单，且把 4xx/5xx 也当正常响应解析。
+    /// 收藏族的 App 基址（api-new.app.acfun.cn）未登录时返回 401 + JSON 正文，
+    /// 需要拿到 body 里的 <c>result</c> 才能区分「未登录」和「路径写错」。
+    /// </summary>
+    public async Task<T?> PostFormToHostAllowErrorAsync<T>(
+        string host,
+        string path,
+        Dictionary<string, string> formData,
+        Dictionary<string, string>? queryParams = null,
+        CancellationToken ct = default)
+    {
+        var url = BuildUrl(host, path, queryParams);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+        request.Headers.Referrer = new Uri(BaseHost);
+        return await SendAsync<T>(request, ct, ensureSuccess: false);
+    }
+
     private async Task<T?> SendAsync<T>(HttpRequestMessage request, CancellationToken ct, bool ensureSuccess = true)
     {
         using var response = await _httpClient.SendAsync(request, ct);

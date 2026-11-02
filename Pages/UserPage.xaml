@@ -10,8 +10,9 @@
 
     <!--
         我的空间（主框架里的独立页面，带后退栈）：
-        上半部分账号卡，下半部分「播放历史 / 收藏」两个分页。
-        收藏列表接口在网页端没有公开入口，先给明确空态，不放假数据。
+        上半部分账号卡（头像 / 昵称 / 投稿获赞关注粉丝 / uid），
+        下半部分「播放历史 / 收藏」两个分页。
+        收藏按视频 / 番剧 / 专辑 / 文章四个分类取，接口走 App 基址，需登录。
     -->
     <Grid Padding="{StaticResource PagePadding}" RowSpacing="16">
         <Grid.RowDefinitions>
@@ -62,9 +63,14 @@
                         Text="未登录"
                         TextTrimming="CharacterEllipsis" />
                     <TextBlock
+                        x:Name="UserStatsText"
+                        Style="{StaticResource MetaTextStyle}"
+                        Visibility="Collapsed" />
+                    <TextBlock
                         x:Name="UserMetaText"
                         Style="{StaticResource MetaTextStyle}"
-                        Text="登录后可以查看播放历史与收藏" />
+                        Text="登录后可以查看播放历史与收藏"
+                        TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
                 <StackPanel
@@ -252,14 +258,162 @@
                 </Grid>
             </Grid>
 
+            <!-- 收藏：筛选栏常驻，只有列表/空态那一块切换。
+                 否则某个分类收藏为空时筛选栏会被一起藏掉，就换不回别的分类了。 -->
+            <Grid x:Name="CollectPanel" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 分类筛选：视频 / 番剧 / 专辑 / 文章 -->
+                <StackPanel
+                    Grid.Row="0"
+                    Margin="0,0,0,10"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="KindDouga"
+                        AutomationProperties.Name="收藏视频"
+                        Click="CollectKind_Click"
+                        Content="视频"
+                        Style="{StaticResource FilterChipSelectedStyle}"
+                        Tag="Douga" />
+                    <Button
+                        x:Name="KindBangumi"
+                        AutomationProperties.Name="收藏番剧"
+                        Click="CollectKind_Click"
+                        Content="番剧"
+                        Style="{StaticResource FilterChipStyle}"
+                        Tag="Bangumi" />
+                    <Button
+                        x:Name="KindAlbum"
+                        AutomationProperties.Name="收藏专辑"
+                        Click="CollectKind_Click"
+                        Content="专辑"
+                        Style="{StaticResource FilterChipStyle}"
+                        Tag="Album" />
+                    <Button
+                        x:Name="KindArticle"
+                        AutomationProperties.Name="收藏文章"
+                        Click="CollectKind_Click"
+                        Content="文章"
+                        Style="{StaticResource FilterChipStyle}"
+                        Tag="Article" />
+                </StackPanel>
+
+                <Grid Grid.Row="1">
+                    <Grid x:Name="FavoriteListHost">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <ListView
+                            x:Name="FavoriteList"
+                            Grid.Row="0"
+                            IsItemClickEnabled="True"
+                            ItemClick="FavoriteList_ItemClick"
+                            ItemContainerStyle="{StaticResource ListViewItemCardStyle}"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="services:FavoriteItem">
+                                    <Grid
+                                        Height="76"
+                                        Padding="4,0,8,0"
+                                        ColumnSpacing="14">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Grid
+                                            Grid.Column="0"
+                                            Width="112"
+                                            Height="63"
+                                            VerticalAlignment="Center"
+                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                            CornerRadius="6">
+                                            <Rectangle RadiusX="6" RadiusY="6">
+                                                <Rectangle.Fill>
+                                                    <ImageBrush
+                                                        ImageSource="{x:Bind Cover, Converter={StaticResource StringToImageSourceConverter}}"
+                                                        Stretch="UniformToFill" />
+                                                </Rectangle.Fill>
+                                            </Rectangle>
+
+                                            <Border
+                                                Margin="0,0,4,4"
+                                                Padding="5,1"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Bottom"
+                                                Background="#99000000"
+                                                CornerRadius="3"
+                                                Visibility="{x:Bind HasDuration}">
+                                                <TextBlock
+                                                    FontSize="10"
+                                                    Foreground="White"
+                                                    Text="{x:Bind DurationText}" />
+                                            </Border>
+                                        </Grid>
+
+                                        <StackPanel
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Spacing="4">
+                                            <TextBlock
+                                                MaxLines="2"
+                                                Style="{StaticResource CardTitleTextStyle}"
+                                                Text="{x:Bind Title}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="Wrap" />
+                                            <TextBlock
+                                                Style="{StaticResource MetaTextStyle}"
+                                                Text="{x:Bind MetaText}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource MetaTextStyle}"
+                                            Text="{x:Bind UpdateText}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+
+                        <Grid
+                            Grid.Row="1"
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Center">
+                            <Button
+                                x:Name="FavoriteMoreButton"
+                                AutomationProperties.Name="收藏加载更多"
+                                Click="FavoriteMoreButton_Click"
+                                Content="加载更多"
+                                Style="{StaticResource AppButtonStyle}"
+                                Visibility="Collapsed" />
+                            <ProgressRing
+                                x:Name="FavoriteRing"
+                                Width="20"
+                                Height="20"
+                                IsActive="False"
+                                Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+
+                    <controls:StatePanel
+                        x:Name="CollectState"
+                        ActionClick="CollectState_ActionClick"
+                        Visibility="Collapsed" />
+                </Grid>
+            </Grid>
+
             <controls:StatePanel
                 x:Name="HistoryState"
                 ActionClick="HistoryState_ActionClick" />
-
-            <controls:StatePanel
-                x:Name="CollectState"
-                ActionClick="CollectState_ActionClick"
-                Visibility="Collapsed" />
         </Grid>
     </Grid>
 </Page>

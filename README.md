@@ -57,7 +57,7 @@ AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直�
 - 番剧库、我的追番（需登录）、选集连播
 - 直播大厅：分区筛选、进直播间看 FLV 流；直播间与点播共用同一套播放器控制层，右栏可查直播信息、码率档位与实时弹幕
 - 直播弹幕：接快手 `zt.live` 的 protobuf 长连接（TCP），进房补一批最近评论，之后实时滚动
-- 我的空间：账号卡 + 播放历史（含进度与观看时间），收藏夹留空态
+- 我的空间：账号卡（投稿 / 获赞 / 关注 / 粉丝）+ 播放历史（含进度与观看时间）+ 收藏（视频 / 番剧 / 专辑 / 文章四类）
 - 账号登录（密码登录），会话持久化到本地，重启不用重登
 
 **播放**
@@ -131,6 +131,11 @@ AStation.Client.Console.exe rank --channel 0 --period week
 AStation.Client.Console.exe bangumi list
 AStation.Client.Console.exe live play 934542 7b_30oOFkR8
 AStation.Client.Console.exe livedanmaku 934542 --seconds 20   # 直播间实时弹幕（TCP 长连接）
+
+# 用户信息（profile 匿名可查；favorites / history 需要先 login）
+AStation.Client.Console.exe profile 16517519
+AStation.Client.Console.exe favorites --type douga --count 20
+AStation.Client.Console.exe history --page 1 --size 20
 
 # 取流与下载（HLS 分片会自动带上清单的签名 query）
 AStation.Client.Console.exe play 3261720
@@ -213,7 +218,9 @@ git push origin v0.1.0
 
 **内容页**：首页 = 榜单 Hero（16:9 主图 + 右侧三条）+ 分区胶囊条 + 推荐网格（`ItemsRepeater` + `UniformGridLayout`）；番剧用 3:4 封面卡片；排行榜行高统一 76；卡片一律走 `Controls/MediaCard`（封面比例、角标、悬停只变底色和描边）。
 
-**覆盖层**：登录 / 用户空间共用一个壳（scrim + 居中卡片，最宽 880 / 最高 760，随窗口收缩，Esc 或点遮罩关闭）。壳挂在窗口根节点而不是 `NavigationView` 内部，这样遮罩能盖住标题栏与导航，也不会因禁用导航把覆盖层自己的控件一起变灰。搜索不走覆盖层——它是 `MainFrame` 里的独立页面，进后退栈，回到搜索页保留关键词、排序与滚动位置。
+**覆盖层**：登录 / 设置 / 关于共用一个壳（scrim + 居中卡片，最宽 880 / 最高 760，随窗口收缩，Esc 或点遮罩关闭）。壳挂在窗口根节点而不是 `NavigationView` 内部，这样遮罩能盖住标题栏与导航，也不会因禁用导航把覆盖层自己的控件一起变灰。我的空间与搜索一样走 `MainFrame` 里的独立页面，进后退栈，回到该页保留列表与滚动位置。
+
+**我的空间**：`MainFrame` 里的独立页面（吃后退栈，`NavigationCacheMode.Enabled` 保留列表与滚动位置）。账号卡的投稿 / 获赞 / 关注 / 粉丝走公开接口 `GET /rest/pc-direct/user/userInfo`（匿名可查）；播放历史走 `POST /rest/pc-direct/browse/history/list`（页码分页，`resourceTypes` 是重复键）；收藏走 App 基址 `api-new.app.acfun.cn/rest/app/favorite/{douga,bangumi,album,article}List`（**游标**分页，首屏 `cursor` 必须传 `"0"`，传空串会被判参数错误）。收藏的四个分类用 chip 切换，筛选栏常驻——否则某个分类为空时连筛选栏都会一起被藏掉，就换不回别的分类。
 
 **状态**：所有列表页统一用 `Controls/StatePanel`（加载 / 空 / 失败 + 重试），覆盖层形式呈现，状态切换不顶动页面布局。
 
@@ -232,7 +239,7 @@ git push origin v0.1.0
 - 登录会话是 Cookie，保存在 `%LOCALAPPDATA%\AStation.Client\cookies.json`（退出登录即删除）；启动时会用 `personalInfo` 自检一次，Cookie 过期就自动退回未登录，不会再出现「标题栏显示已登录、点收藏 401」的假登录
 - 楼中楼只能拿到每个主楼的前 3 条回复，官方没有「更多回复」接口
 - 搜索只覆盖视频（用户 / 番剧的搜索接口返回 HTML 页，未接入），且接口只下发前 30 条
-- 用户空间页已接播放历史；收藏夹没有公开接口（`/collect/list`、`/favorite/list` 等 7 个候选路径全部 404），先留空态
+- 我的空间已接播放历史与收藏：收藏走 App 基址 `api-new.app.acfun.cn/rest/app/favorite/{douga,bangumi,album,article}List`（游标分页，首屏 `cursor=0`），收藏夹（folder）只做了接口封装，界面暂未提供夹内浏览
 - 播放器暂无键盘快捷键，只有 `Esc` 退出全屏
 - 直播弹幕只渲染文字：表情走富文本标记，目前按原文显示，未做图形化
 

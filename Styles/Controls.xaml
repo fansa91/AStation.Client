@@ -58,6 +58,30 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
+    <!-- 筛选用 chip：未选中 / 选中两套，靠切换 Style 表现选中态。
+         不直接改 Background —— 内置 VisualState 会在悬停时把它盖掉。 -->
+    <Style x:Key="FilterChipStyle" TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusChip}" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style
+        x:Key="FilterChipSelectedStyle"
+        BasedOn="{StaticResource FilterChipStyle}"
+        TargetType="Button">
+        <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+    </Style>
+
     <!-- 频道入口：图标 + 名称，自适应宽度（取代原来写死的 100×56） -->
     <Style x:Key="ChannelCardButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />

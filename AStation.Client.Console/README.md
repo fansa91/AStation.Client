@@ -39,6 +39,9 @@ AStation.Client.Console/bin/Debug/net10.0/AStation.Client.Console.exe help
 | `ubb "<文本>"` | 看 UBB 正文被解析成什么（表情 / @ / 图片 / 换行） |
 | `login` | 账号密码登录（见下节），成功后把 Cookie 存盘 |
 | `whoami` | 用存下的 Cookie 探一次 `personalInfo`，看登录态 |
+| `profile <userId>` | 用户公开资料：投稿 / 获赞 / 关注 / 粉丝 / IP 属地。**匿名可查** |
+| `favorites` | 收藏列表（需登录）。`--type douga\|bangumi\|album\|article`、`--cursor`、`--count` |
+| `history` | 播放历史（需登录）。`--page`、`--size`、`--no-bangumi` 只要视频 |
 | `config [show\|path\|init]` | 看 / 建本地配置文件（见下节） |
 
 通用开关：`--json`（原始结构）、`--h264`（不要 H.265 清单）、`--raw`（原始正文）。

@@ -53,11 +53,12 @@ public class HistoryService
 
         try
         {
-            var response = await _api.PostFormAsync<JsonNode>(Path, form, ct);
+            var response = await _api.PostFormAllowErrorAsync<JsonNode>(Path, form, ct);
             var page = Parse(response);
 
-            // resourceTypes 万一不被接受（服务端只认单值），退一步不带类型再试一次
-            if (page.Result != 0 && includeBangumi)
+            // resourceTypes 万一不被接受（服务端只认单值），退一步不带类型再试一次。
+            // -401 是确定的「没登录」，不用再试。
+            if (page.Result != 0 && page.Result != -401 && includeBangumi)
             {
                 return await GetHistoryAsync(pageNo, pageSize, includeBangumi: false, ct);
             }

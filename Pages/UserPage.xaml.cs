@@ -13,19 +13,35 @@ namespace AStation_Client.Pages;
 /// 这里是**主框架里的跳转页**（不是覆盖层）：从标题栏账号按钮或侧栏账号项进来，
 /// 吃后退栈，随时可以回上一页。
 ///
-/// 播放历史走服务端接口（需登录）；收藏在网页端没有公开接口，先给明确空态。
+/// 数据来源：
+///   · 账号卡统计 —— GET /rest/pc-direct/user/userInfo（匿名可调）
+///   · 播放历史   —— POST /rest/pc-direct/browse/history/list（需登录）
+///   · 收藏       —— POST api-new.app.acfun.cn/rest/app/favorite/{douga,bangumi,album,article}List（需登录）
+///
+/// 收藏是**游标**分页（cursor 首屏传 "0"），历史是页码分页，两者各管各的游标。
 /// </summary>
 public sealed partial class UserPage : Page
 {
     private const int PageSize = 20;
 
+    // 播放历史
     private int _pageNo;
     private int _totalCount;
     private bool _loading;
     private string? _loadedForUser;
     private int _tabIndex;
 
+    // 收藏
+    private FavoriteKind _kind = FavoriteKind.Douga;
+    private string _favCursor = "0";
+    private bool _favLoading;
+    private bool _favHasMore;
+    private bool _favLoaded;
+    private string? _favLoadedForUser;
+
     public ObservableCollection<HistoryItem> History { get; } = new();
+
+    public ObservableCollection<FavoriteItem> Favorites { get; } = new();
 
     public UserPage()
     {
@@ -35,6 +51,7 @@ public sealed partial class UserPage : Page
         NavigationCacheMode = NavigationCacheMode.Enabled;
 
         HistoryList.ItemsSource = History;
+        FavoriteList.ItemsSource = Favorites;
         ApplyLoggedInState();
     }
 
@@ -46,6 +63,7 @@ public sealed partial class UserPage : Page
         // 换了账号（或从没登录变成登录）才重新拉，单纯回退不重刷
         if (AccountState.IsLoggedIn && _loadedForUser != AccountState.UserName)
         {
+            _ = LoadProfileAsync();
             _ = LoadHistoryAsync(reset: true);
         }
 
@@ -80,9 +98,48 @@ public sealed partial class UserPage : Page
             Avatar.ProfilePicture = null;
         }
 
+        if (!loggedIn)
+        {
+            UserStatsText.Visibility = Visibility.Collapsed;
+            UserStatsText.Text = string.Empty;
+        }
+
         if (!loggedIn && _tabIndex == 0)
         {
             ShowHistoryEmpty();
+        }
+    }
+
+    /// <summary>拉公开资料，把投稿 / 获赞 / 关注 / 粉丝补到账号卡上（匿名可调，失败不影响其它）</summary>
+    private async Task LoadProfileAsync()
+    {
+        long userId = AccountState.UserId;
+        if (!AccountState.IsLoggedIn || userId <= 0) return;
+
+        try
+        {
+            var profile = await ServiceLocator.UserProfile.GetProfileAsync(userId);
+            if (profile is null) return;
+
+            // 拉的过程中可能已经退出登录了
+            if (!AccountState.IsLoggedIn || AccountState.UserId != userId) return;
+
+            UserStatsText.Text = profile.StatsText;
+            UserStatsText.Visibility = Visibility.Visible;
+
+            if (!string.IsNullOrWhiteSpace(profile.DetailText))
+            {
+                UserMetaText.Text = profile.DetailText;
+            }
+
+            if (!string.IsNullOrWhiteSpace(profile.Name) && !string.Equals(profile.Name, AccountState.UserName))
+            {
+                UserNameText.Text = profile.Name;
+            }
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("UserPage.LoadProfile", ex);
         }
     }
 
@@ -110,6 +167,15 @@ public sealed partial class UserPage : Page
         _totalCount = 0;
         CountText.Text = string.Empty;
         LoadMoreButton.Visibility = Visibility.Collapsed;
+
+        Favorites.Clear();
+        _favLoaded = false;
+        _favLoadedForUser = null;
+        _favCursor = "0";
+        _favHasMore = false;
+        _kind = FavoriteKind.Douga;
+        FavoriteMoreButton.Visibility = Visibility.Collapsed;
+        ApplyKindChipStyles();
 
         ApplyLoggedInState();
         SelectTab(0, force: true);
@@ -143,10 +209,10 @@ public sealed partial class UserPage : Page
         CollectTab.IsChecked = !history;
 
         HistoryPanel.Visibility = history ? Visibility.Visible : Visibility.Collapsed;
-        CollectState.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
         HistoryState.Visibility = history && HistoryState.IsShowing
             ? Visibility.Visible
             : Visibility.Collapsed;
+        CollectPanel.Visibility = history ? Visibility.Collapsed : Visibility.Visible;
 
         if (history)
         {
@@ -156,27 +222,103 @@ public sealed partial class UserPage : Page
         else
         {
             CountText.Text = string.Empty;
-            ShowCollectState();
+
+            if (!AccountState.IsLoggedIn)
+            {
+                ShowCollectLoginState();
+                return;
+            }
+
+            // 收藏是游标分页，切分类/换账号才重拉
+            if (!_favLoaded || _favLoadedForUser != AccountState.UserName)
+            {
+                _ = LoadFavoritesAsync(reset: true);
+            }
+            else
+            {
+                ShowFavoritePanel();
+            }
         }
     }
 
-    private void ShowCollectState()
+    private void ShowCollectLoginState()
     {
-        if (!AccountState.IsLoggedIn)
-        {
-            CollectState.ShowEmpty(
-                "登录后才能看收藏",
-                "AcFun 的收藏夹跟账号绑定，登录之后再来。",
-                actionText: "去登录",
-                glyph: "\uE77B");
-            return;
-        }
-
+        // 筛选栏留着，只把列表换成引导态 —— 否则这里点不出别的分类
+        CollectPanel.Visibility = Visibility.Visible;
+        FavoriteListHost.Visibility = Visibility.Collapsed;
+        CollectState.Visibility = Visibility.Visible;
+        FavoriteMoreButton.Visibility = Visibility.Collapsed;
+        CountText.Text = string.Empty;
         CollectState.ShowEmpty(
-            "收藏夹还没接入",
-            "AcFun 网页端的收藏列表接口没有公开文档，试过的候选路径都是 404；确认接口后这里会列出你的收藏夹。",
+            "登录后才能看收藏",
+            "AcFun 的收藏夹跟账号绑定，登录之后再来。",
+            actionText: "去登录",
+            glyph: "\uE77B");
+    }
+
+    /// <summary>收藏列表已有数据（或空）时，切换列表与空态的显示</summary>
+    private void ShowFavoritePanel()
+    {
+        bool has = Favorites.Count > 0;
+
+        CollectPanel.Visibility = Visibility.Visible;
+        FavoriteListHost.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        CollectState.Visibility = has ? Visibility.Collapsed : Visibility.Visible;
+        CountText.Text = has ? $"已加载 {Favorites.Count} 条" : string.Empty;
+
+        if (has) return;
+
+        FavoriteMoreButton.Visibility = Visibility.Collapsed;
+        CollectState.ShowEmpty(
+            $"还没有收藏{KindName(_kind)}",
+            _kind switch
+            {
+                FavoriteKind.Bangumi => "在番剧页点追番后，会出现在这里。",
+                FavoriteKind.Album => "你收藏的专辑会出现在这里。",
+                FavoriteKind.Article => "你收藏的文章会出现在这里。",
+                _ => "在视频页点收藏后，会出现在这里。"
+            },
             actionText: null,
             glyph: "\uE734");
+    }
+
+    private static string KindName(FavoriteKind kind) => kind switch
+    {
+        FavoriteKind.Bangumi => "番剧",
+        FavoriteKind.Album => "专辑",
+        FavoriteKind.Article => "文章",
+        _ => "视频"
+    };
+
+    /// <summary>点分类 chip：只换样式、重拉列表，不重建控件</summary>
+    private void CollectKind_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not string tag) return;
+
+        if (!Enum.TryParse<FavoriteKind>(tag, out var kind)) return;
+        if (kind == _kind && _favLoaded) return;
+
+        _kind = kind;
+        ApplyKindChipStyles();
+
+        _ = LoadFavoritesAsync(reset: true);
+    }
+
+    private void ApplyKindChipStyles()
+    {
+        var selected = (Style)Application.Current.Resources["FilterChipSelectedStyle"];
+        var normal = (Style)Application.Current.Resources["FilterChipStyle"];
+
+        foreach (var (button, kind) in new[]
+                 {
+                     (KindDouga, FavoriteKind.Douga),
+                     (KindBangumi, FavoriteKind.Bangumi),
+                     (KindAlbum, FavoriteKind.Album),
+                     (KindArticle, FavoriteKind.Article)
+                 })
+        {
+            button.Style = kind == _kind ? selected : normal;
+        }
     }
 
     private void CollectState_ActionClick(object? sender, EventArgs e)
@@ -320,6 +462,111 @@ public sealed partial class UserPage : Page
             ResourceType = item.ResourceType,
             Title = item.Title,
             VideoId = string.IsNullOrWhiteSpace(item.VideoId) ? null : item.VideoId
+        });
+    }
+
+    // ───────────────────────── 收藏 ─────────────────────────
+
+    /// <summary>
+    /// 拉一页收藏。<paramref name="reset"/> 为 false 时按游标续接（这个接口是 cursor 分页，不是页码）。
+    /// </summary>
+    private async Task LoadFavoritesAsync(bool reset)
+    {
+        if (_favLoading) return;
+        if (!AccountState.IsLoggedIn)
+        {
+            ShowCollectLoginState();
+            return;
+        }
+
+        _favLoading = true;
+
+        if (reset)
+        {
+            _favCursor = "0";
+            _favHasMore = false;
+            Favorites.Clear();
+            CountText.Text = string.Empty;
+            CollectPanel.Visibility = Visibility.Visible;
+            FavoriteListHost.Visibility = Visibility.Collapsed;
+            CollectState.Visibility = Visibility.Visible;
+            CollectState.ShowLoading($"正在读取收藏{KindName(_kind)}…");
+            FavoriteMoreButton.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            FavoriteMoreButton.Visibility = Visibility.Collapsed;
+            FavoriteRing.Visibility = Visibility.Visible;
+            FavoriteRing.IsActive = true;
+        }
+
+        try
+        {
+            var page = await ServiceLocator.Favorite.GetFavoritesAsync(_kind, _favCursor, PageSize);
+
+            if (page.Result == -401)
+            {
+                // 会话过期：标记与 Cookie 一起撤掉，页面回到未登录态
+                SessionStore.Clear(ServiceLocator.Api);
+                AccountState.Clear();
+                ApplyLoggedInState();
+                ShowCollectLoginState();
+                return;
+            }
+
+            if (page.Result != 0)
+            {
+                CollectPanel.Visibility = Visibility.Visible;
+                FavoriteListHost.Visibility = Visibility.Collapsed;
+                CollectState.Visibility = Visibility.Visible;
+                CollectState.ShowError(
+                    $"收藏{KindName(_kind)}没加载出来",
+                    page.ErrorMessage ?? "接口返回异常，请稍后重试。");
+                FavoriteMoreButton.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            foreach (var item in page.Items) Favorites.Add(item);
+
+            _favCursor = page.Cursor;
+            _favHasMore = page.HasMore;
+            _favLoaded = true;
+            _favLoadedForUser = AccountState.UserName;
+
+            ShowFavoritePanel();
+            FavoriteMoreButton.Visibility = _favHasMore ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            App.WriteLog("UserPage.LoadFavorites", ex);
+            CollectPanel.Visibility = Visibility.Visible;
+            FavoriteListHost.Visibility = Visibility.Collapsed;
+            CollectState.Visibility = Visibility.Visible;
+            CollectState.ShowError("收藏没加载出来", ex.Message);
+        }
+        finally
+        {
+            _favLoading = false;
+            FavoriteRing.IsActive = false;
+            FavoriteRing.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void FavoriteMoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        _ = LoadFavoritesAsync(reset: false);
+    }
+
+    private void FavoriteList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not FavoriteItem item || !item.CanOpen) return;
+
+        // 视频 → resourceType 2，番剧 → 1；专辑和文章还没有对应页面，点了不跳
+        Frame.Navigate(typeof(VideoPage), new VideoNavArgs
+        {
+            ResourceId = item.ContentId,
+            ResourceType = item.NavigateResourceType,
+            Title = item.Title
         });
     }
 }
