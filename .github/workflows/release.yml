@@ -20,6 +20,7 @@ permissions:
 
 env:
   APP_NAME: AStation.Client
+  CONSOLE_NAME: AStation.Client.Console
   DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
@@ -155,10 +156,113 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # ─────────────────── 命令行工具矩阵：自包含 / 框架依赖（无 WinUI 依赖） ───────────────────
+  build-console:
+    name: Build Console x64 (${{ matrix.flavor }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - self_contained: 'true'
+            flavor: self-contained
+          - self_contained: 'false'
+            flavor: framework-dependent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Resolve version from tag
+        id: ver
+        shell: pwsh
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $tag = if ([string]::IsNullOrWhiteSpace($env:TAG_INPUT)) { $env:REF_NAME } else { $env:TAG_INPUT }
+          $tag = $tag.Trim()
+          if ($tag -notmatch '^v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.\-]+)?)$') {
+            throw "tag '$tag' 不是合法的 semver，请用 v1.2.3 或 v1.2.3-beta.1 形式"
+          }
+          "version=$($Matches[1])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "版本号：$($Matches[1])（来源 tag：$tag）"
+
+      - name: Publish
+        id: publish
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          SELF_CONTAINED: ${{ matrix.self_contained }}
+        run: |
+          $outDir = Join-Path $env:RUNNER_TEMP "console-${{ matrix.flavor }}"
+          # 与主程序保持同一套版本号规则：AssemblyVersion 只取数字段，预发布标记进 InformationalVersion
+          $asmVersion = ($env:VERSION -split '[-+]')[0]
+          dotnet publish "$env:CONSOLE_NAME/$env:CONSOLE_NAME.csproj" `
+            -c Release `
+            -r win-x64 `
+            --self-contained $env:SELF_CONTAINED `
+            -p:Version=$env:VERSION `
+            -p:AssemblyVersion=$asmVersion `
+            -p:FileVersion=$asmVersion `
+            -p:InformationalVersion=$env:VERSION `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o $outDir
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败（exit $LASTEXITCODE）" }
+
+          if (-not (Test-Path (Join-Path $outDir "$env:CONSOLE_NAME.exe"))) {
+            throw "发布目录缺少 $env:CONSOLE_NAME.exe（发布产物不完整，中止）"
+          }
+          # 附一份命令说明，解压就能查用法
+          $readme = Join-Path $env:CONSOLE_NAME 'README.md'
+          if (Test-Path $readme) { Copy-Item $readme (Join-Path $outDir 'README.md') -Force }
+          "out_dir=$outDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "产物：$outDir（$((Get-ChildItem $outDir -File).Count) 个文件，$([math]::Round((Get-ChildItem $outDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB, 1)) MB）"
+
+      - name: Package
+        id: package
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          OUT_DIR: ${{ steps.publish.outputs.out_dir }}
+        run: |
+          $zipName = "$env:CONSOLE_NAME-$env:VERSION-win-x64-${{ matrix.flavor }}.zip"
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $zipName
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+
+          try {
+            [System.IO.Compression.ZipFile]::CreateFromDirectory(
+              $env:OUT_DIR, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)
+          } catch {
+            Write-Warning "ZipFile 打包失败，回退 Compress-Archive：$_"
+            Compress-Archive -Path (Join-Path $env:OUT_DIR '*') -DestinationPath $zipPath -CompressionLevel Optimal
+          }
+          if (-not (Test-Path $zipPath)) { throw "压缩失败：$zipName 未生成" }
+
+          $sizeMb = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+          Write-Host "打包完成：$zipName（$sizeMb MB）"
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "zip_size=$sizeMb"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip_name }}
+          path: ${{ steps.package.outputs.zip_name }}
+          if-no-files-found: error
+          retention-days: 7
+
   # ─────────────────────────── 汇总发布 ───────────────────────────
   release:
     name: Publish Release
-    needs: build
+    needs: [build, build-console]
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -203,11 +307,13 @@ jobs:
         run: |
           $selfContained = "$env:APP_NAME-$env:VERSION-win-x64-self-contained.zip"
           $frameworkDep  = "$env:APP_NAME-$env:VERSION-win-x64-framework-dependent.zip"
+          $cliSelfContained = "$env:CONSOLE_NAME-$env:VERSION-win-x64-self-contained.zip"
+          $cliFrameworkDep  = "$env:CONSOLE_NAME-$env:VERSION-win-x64-framework-dependent.zip"
 
           $notes = @"
           AcFun 第三方桌面客户端 $env:VERSION（Windows 10 1809+ / x64）
 
-          ## 下载哪个
+          ## 桌面客户端
 
           | 包 | 说明 |
           |---|---|
@@ -216,6 +322,23 @@ jobs:
 
           两个版本都已内置 Windows App SDK 运行时，不需要额外安装 Windows App Runtime。
           下载后解压到任意目录运行（不要放在需要管理员权限的路径下），``SHA256SUMS.txt`` 可用于校验完整性。
+
+          ## 命令行工具（可选）
+
+          同一个接口层做的 CLI，查接口、批量下载都用它：
+
+          | 包 | 说明 |
+          |---|---|
+          | ``$cliSelfContained`` | **自包含**：内置 .NET 运行时，解压后直接 ``$env:CONSOLE_NAME.exe help`` |
+          | ``$cliFrameworkDep`` | **框架依赖**：体积小，需先安装 [.NET 10 Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/10.0)（不需要 Desktop Runtime） |
+
+          常用命令：
+
+          - ``$env:CONSOLE_NAME.exe search 猫 --limit 5``
+          - ``$env:CONSOLE_NAME.exe video 3261720 --json``
+          - ``$env:CONSOLE_NAME.exe download 3261720 --quality 720 -o a.ts --mp4``
+
+          完整命令见仓库 ``$env:CONSOLE_NAME/README.md``。
           "@
 
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'

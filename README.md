@@ -144,12 +144,23 @@ AStation.Client.Console.exe emotes --keyword 笑
 
 ## 版本与发布
 
-版本号由 git tag 驱动，形如 `v0.1.0`。打 tag 推送后 GitHub Actions 会自动构建两个变体并发布 Release：
+版本号由 git tag 驱动，形如 `v0.1.0`。打 tag 推送后 GitHub Actions 会自动构建并发布 Release：
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
+
+每次发布产出 4 个 x64 包（自包含 / 框架依赖各两份），版本号全部取自 tag：
+
+| 包 | 内容 |
+| --- | --- |
+| `AStation.Client-<ver>-win-x64-self-contained.zip` | 桌面端，内置 .NET 运行时 |
+| `AStation.Client-<ver>-win-x64-framework-dependent.zip` | 桌面端，需 .NET 10 Desktop Runtime |
+| `AStation.Client.Console-<ver>-win-x64-self-contained.zip` | 命令行工具，内置 .NET 运行时 |
+| `AStation.Client.Console-<ver>-win-x64-framework-dependent.zip` | 命令行工具，需 .NET 10 Runtime（不需 Desktop） |
+
+桌面端两个包始终内置 Windows App SDK 运行时；`SHA256SUMS.txt` 用于校验完整性。命令行工具不依赖 WinUI，自包含包可以直接拷到任意 Windows x64 机器上跑。
 
 ## 项目结构
 
