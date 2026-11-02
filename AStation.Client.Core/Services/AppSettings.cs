@@ -19,6 +19,15 @@ public class AppSettings
     /// <summary>侧边栏是否常驻展开</summary>
     public bool ExpandSidebar { get; set; } = true;
 
+    // ── 窗口 ──
+    /// <summary>上次退出时的窗口尺寸与位置（物理像素，宽或高为 0 表示还没记录过，用默认尺寸）</summary>
+    public int WindowWidth { get; set; }
+
+    public int WindowHeight { get; set; }
+    public int WindowLeft { get; set; }
+    public int WindowTop { get; set; }
+    public bool WindowMaximized { get; set; }
+
     // ── 播放 ──
     /// <summary>首选清晰度：Auto / 1080P / 720P / 540P / 360P</summary>
     public string PreferredQuality { get; set; } = "Auto";
@@ -121,6 +130,11 @@ public class AppSettings
         var defaults = new AppSettings();
         Theme = defaults.Theme;
         ExpandSidebar = defaults.ExpandSidebar;
+        WindowWidth = defaults.WindowWidth;
+        WindowHeight = defaults.WindowHeight;
+        WindowLeft = defaults.WindowLeft;
+        WindowTop = defaults.WindowTop;
+        WindowMaximized = defaults.WindowMaximized;
         PreferredQuality = defaults.PreferredQuality;
         PreferHevc = defaults.PreferHevc;
         AutoPlay = defaults.AutoPlay;

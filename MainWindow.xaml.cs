@@ -1,4 +1,5 @@
 ﻿using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -43,6 +44,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Changed += (_, args) =>
         {
             if (args.DidSizeChange) UpdateTitleBarInsets();
+            if (args.DidSizeChange || args.DidPositionChange) RequestWindowGeometrySave();
         };
         ShellRoot.SizeChanged += (_, _) => UpdateResponsiveLayout();
         MainFrame.Navigated += (_, e) =>
@@ -55,6 +57,7 @@ public sealed partial class MainWindow : Window
         AccountState.Changed += (_, _) => RefreshAccountUi();
         RefreshAccountUi();
 
+        StartWindowGeometryTracking();
         ApplyInitialWindowSize();
 
         // 默认打开首页
@@ -63,8 +66,8 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// 冷启动时的窗口尺寸。
-    /// WinUI3 默认给的是一个偏小的窗口，播放页两栏布局会挤在一起，
-    /// 所以启动时显式给一个按工作区分档的尺寸，并居中显示。
+    /// 上次退出记过尺寸就还原（换显示器 / 改分辨率时按当前工作区夹一次，位置出界则居中），
+    /// 没记过才给默认尺寸 —— WinUI3 默认窗口偏小，播放页两栏布局会挤在一起。
     /// </summary>
     private void ApplyInitialWindowSize()
     {
@@ -72,6 +75,33 @@ public sealed partial class MainWindow : Window
         {
             var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
             var work = area.WorkArea;
+            var settings = AppSettings.Current;
+
+            if (settings.WindowWidth >= MinRestorableWidth && settings.WindowHeight >= MinRestorableHeight)
+            {
+                int restoreWidth = Math.Min(settings.WindowWidth, work.Width);
+                int restoreHeight = Math.Min(settings.WindowHeight, work.Height);
+                int restoreX = settings.WindowLeft;
+                int restoreY = settings.WindowTop;
+
+                // 保证标题栏那一条还留在工作区里，否则窗口既看不见也拖不回来
+                if (restoreX + restoreWidth <= work.X + TitleBarGrabMargin
+                    || restoreX >= work.X + work.Width - TitleBarGrabMargin
+                    || restoreY < work.Y
+                    || restoreY >= work.Y + work.Height - TitleBarGrabMargin)
+                {
+                    restoreX = work.X + (work.Width - restoreWidth) / 2;
+                    restoreY = work.Y + (work.Height - restoreHeight) / 2;
+                }
+
+                AppWindow.MoveAndResize(new Windows.Graphics.RectInt32(restoreX, restoreY, restoreWidth, restoreHeight));
+
+                if (settings.WindowMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+                {
+                    presenter.Maximize();
+                }
+                return;
+            }
 
             // 目标 1440×900，工作区放不下就按比例收，再兜底最小值
             int width = Math.Min(1440, (int)(work.Width * 0.86));
@@ -92,6 +122,64 @@ public sealed partial class MainWindow : Window
         catch (Exception ex)
         {
             RuntimeLog.Write("window", $"设置初始窗口尺寸失败：{ex.Message}");
+        }
+    }
+
+    // ───────────── 窗口几何持久化 ─────────────
+
+    /// <summary>小于这个尺寸的历史记录不采信（多半是配置损坏或旧版本残留）</summary>
+    private const int MinRestorableWidth = 600;
+
+    private const int MinRestorableHeight = 400;
+
+    /// <summary>还原位置时留给标题栏的最小可见宽度</summary>
+    private const int TitleBarGrabMargin = 100;
+
+    private DispatcherQueueTimer? _geometrySaveTimer;
+
+    /// <summary>拖动 / 缩放会连着触发几十次 Changed，停下来 500ms 才写一次盘</summary>
+    private void StartWindowGeometryTracking()
+    {
+        _geometrySaveTimer = DispatcherQueue.CreateTimer();
+        _geometrySaveTimer.Interval = TimeSpan.FromMilliseconds(500);
+        _geometrySaveTimer.IsRepeating = false;
+        _geometrySaveTimer.Tick += (_, _) => SaveWindowGeometry();
+    }
+
+    private void RequestWindowGeometrySave()
+    {
+        if (_geometrySaveTimer is null) return;
+        _geometrySaveTimer.Stop();
+        _geometrySaveTimer.Start();
+    }
+
+    private void SaveWindowGeometry()
+    {
+        try
+        {
+            // 全屏期间窗口就是整块屏幕，记下来下次启动就铺满了
+            if (_chromeHidden || _savedStyle is not null) return;
+
+            var presenter = AppWindow.Presenter as OverlappedPresenter;
+            var settings = AppSettings.Current;
+            settings.WindowMaximized = presenter?.State == OverlappedPresenterState.Maximized;
+
+            // 最大化 / 最小化时 Size 报的是这副样子的尺寸，只更新标志，保住还原尺寸
+            if (presenter?.State is OverlappedPresenterState.Maximized or OverlappedPresenterState.Minimized)
+            {
+                settings.Save();
+                return;
+            }
+
+            settings.WindowWidth = AppWindow.Size.Width;
+            settings.WindowHeight = AppWindow.Size.Height;
+            settings.WindowLeft = AppWindow.Position.X;
+            settings.WindowTop = AppWindow.Position.Y;
+            settings.Save();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Write("window", $"记录窗口几何失败：{ex.Message}");
         }
     }
 
