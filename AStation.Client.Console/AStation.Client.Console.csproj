@@ -19,4 +19,12 @@
     <ProjectReference Include="..\AStation.Client.Core\AStation.Client.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 示例配置文件随构建 / 发布一起拷到输出目录，用户复制改名成
+         AStation.Client.Console.config 即可生效（.example 后缀不会被自动加载） -->
+    <None Update="AStation.Client.Console.config.example"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

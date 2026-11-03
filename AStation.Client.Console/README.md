@@ -74,6 +74,25 @@ AStation.Client.Console.exe whoami
 格式照 BBDown 的 `BBDown.config`：**一行一个参数**，需要值的选项把值写在**下一行**，
 `#` 开头是注释，空行忽略。因为一行就是一个完整参数，值里带空格、带引号都不用转义。
 
+### 现成的示例文件
+
+发布包里带了一份 **`AStation.Client.Console.config.example`**（仓库里同名文件）：
+
+- 里面有全部选项的注释说明、合法取值，以及几段「下载党 / 接口调试 / 只看历史」的组合示例；
+- 复制一份、把后缀 `.example` 去掉、放到 exe 旁边或当前目录，就生效了；
+- 后缀带 `.example` 时**不会被自动加载**，所以留着它不会改变任何默认行为。
+
+```bash
+# 解压后的目录里：
+copy AStation.Client.Console.config.example AStation.Client.Console.config
+AStation.Client.Console.exe config          # 看看解析出了什么
+```
+
+和 `config init` 的区别：`config init` 写的是**最短模板**（只有 4 个最常用项的注释，落地后
+行为不变），适合先跑起来；`.example` 是**完整参考 + 场景配方**，适合照着改。
+
+### 格式示例
+
 ```config
 # AStation.Client.Console.config
 # 默认不要 H.265 清单
@@ -89,11 +108,49 @@ AStation.Client.Console.exe whoami
 --mp4
 ```
 
+> 带值的选项要「选项行 + 值行」**成对**注释或成对放开。只注释掉选项行、把值留在外面，
+> 那个值会变成裸参数被忽略（stderr 会提示）。另外别用单字母别名——`-p` 在
+> password / period / path 之间会撞车，配置里一律写全名。
+
+### 全部选项
+
+| 选项 | 取值 | 适用命令 |
+| --- | --- | --- |
+| `--json` | 开关 | 全部（输出原始结构） |
+| `--raw` | 开关 | `comments` `danmaku` `ubb`（原始正文） |
+| `--limit <n>` | 1–30（search）/ 1–50（其他） | `search` `rank` `bangumi` `live` `danmaku` `emotes` `comments` |
+| `--sort <s>` | `1` 综合 / `2` 最多播放 / `5` 最新发布 | `search` |
+| `--channel <id>` | 0 全站 / 1 游戏 / 2 其他 / 3 娱乐 / 4 虚拟偶像 | `rank` `live list` |
+| `--period <p>` | `today` / `3d` / `week` | `rank` |
+| `--page <n>` | 页码 | `comments` `history` |
+| `--type <t>` | 评论/取流用 `3` 视频、`2` 番剧；收藏用 `douga`/`bangumi`/`album`/`article` | `comments` `play` `favorites` |
+| `--quality <q>` | `best` / `1080P` / `720P` / `540P` / `360P`（或纯数字 `720`） | `download` |
+| `--out <路径>` | 输出文件（别名 `-o`） | `download` |
+| `--url <m3u8>` | 直接下清单（别名 `-u`） | `download` |
+| `--mp4` | 开关 | `download` |
+| `--h264` | 开关 | `play` `download` |
+| `--video <videoId>` | 分P 的 videoId（不是 acId） | `play` `download` |
+| `--mkey <k>` | 番剧播放授权 key | `play` `download` |
+| `--seconds <n>` | 监听秒数 | `livedanmaku` |
+| `--username <账号>` | 手机号或邮箱（别名 `-u`） | `login` |
+| `--password <密码>` | 明文（别名 `-p`） | `login` |
+| `--cookies <路径>` | Cookie 文件路径 | `login` `whoami` |
+| `--captcha-key` / `--captcha-code` / `--captcha-image` | 脚本式登录用 | `login` |
+| `--cursor <c>` | 首屏必须 `0` | `favorites` |
+| `--count <n>` | 收藏每页条数 | `favorites` |
+| `--size <n>` | 历史每页条数 | `history` |
+| `--no-bangumi` | 开关 | `history` |
+| `--config-file <路径>` | 指定配置文件 | 全部 |
+| `--no-config` | 开关（忽略配置） | 全部 |
+
 放置位置与优先级：
 
 1. `--config-file <路径>` 指定的文件（缺文件直接报错）
 2. 程序目录（exe 旁边）的 `AStation.Client.Console.config`
 3. 当前工作目录的同名文件
+
+> `--config-file` 要写在**命令之后**（命令行第一个参数必须是命令名，例如
+> `AStation.Client.Console.exe rank --config-file D:\ac.config`）。
 
 配置里的参数排在命令行参数**之前**，所以命令行上再写一次就覆盖它
 （`search 猫 --limit 3` 会盖掉配置里的 10）。`--no-config` 临时忽略配置文件。

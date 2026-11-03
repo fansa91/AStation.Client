@@ -17,8 +17,11 @@ namespace AStation_Client.Services;
 ///   durationSecondsShow（"07:26"）/ playedSecondsShow（"已看完"）/ durationSeconds / playedSeconds /
 ///   browseTime（毫秒时间戳）/ dougaVideoTitle（分P名）/ bangumiItemEpisodeName（番剧集名）/ user.name
 ///
-/// 服务端历史由 App 端 protobuf 上报通道（report/playContent + log/action）自动写入，
-/// 客户端正常取流即可积累记录，这里只负责读。
+/// 服务端历史由真机 AcFun App 端的行为上报通道写入（app 基址 protobuf 的
+/// log/action 历史通道 + report/playContent 进度通道）。桌面端无法自行往这两条
+/// 通道写（2026-11 实测：log/action 内层 HistoryDouga 字段号缺失被静默丢弃；
+/// report/playContent 现策略对桌面端全回 result=21），所以这里**只负责读**：
+/// 用户在手机 App 里看过的记录会出现在本列表，桌面端自己看的不会新增条目。
 /// </summary>
 public class HistoryService
 {

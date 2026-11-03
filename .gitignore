@@ -54,3 +54,6 @@ _ReSharper*/
 # Generated files
 Generated\ Files/
 *_wpftmp.csproj
+
+# 本地启用的实际配置文件（可能含账号密码，不进仓库）；示例文件 *.config.example 要进仓库
+AStation.Client.Console.config
