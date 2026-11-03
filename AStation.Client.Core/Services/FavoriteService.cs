@@ -86,8 +86,7 @@ public class FavoriteService
     }
 
     /// <summary>收藏夹（文件夹）列表，用于将来做夹内浏览；未登录同样 -401。</summary>
-    public async Task<FavoritePage> GetFoldersAsync(CancellationToken ct = default)
-    {
+    public async Task<FavoritePage> GetFoldersAsync(CancellationToken ct = default)    {
         try
         {
             var node = await _api.PostFormToHostAllowErrorAsync<JsonNode>(
@@ -97,6 +96,126 @@ public class FavoriteService
         catch (Exception ex)
         {
             return new FavoritePage { Result = -1, ErrorMessage = ex.Message };
+        }
+    }
+
+    /// <summary>
+    /// 收藏系 resourceType 与播放系不同（jadx 实锤 <c>FavoriteResourceType</c>）：
+    /// 番剧 1 / 文章 3 / 专辑 4 / **视频 9**。写操作必须用这套值，用播放系的 2 会收不到。
+    /// </summary>
+    internal static int FavoriteResourceTypeOf(bool bangumi) => bangumi ? 1 : 9;
+
+    /// <summary>收藏一条资源（视频 / 番剧）。resourceId 传稿件 ac 号或番剧 aa 号。</summary>
+    public async Task<FavoriteResult> AddFavoriteAsync(string resourceId, bool bangumi, CancellationToken ct = default)
+        => await PostFavoriteAsync(
+            "/rest/app/favorite",
+            new Dictionary<string, string>
+            {
+                ["resourceId"] = resourceId,
+                ["resourceType"] = FavoriteResourceTypeOf(bangumi).ToString()
+            },
+            ct);
+
+    /// <summary>取消收藏一条资源。</summary>
+    public async Task<FavoriteResult> RemoveFavoriteAsync(string resourceId, bool bangumi, CancellationToken ct = default)
+        => await PostFavoriteAsync(
+            "/rest/app/unFavorite",
+            new Dictionary<string, string>
+            {
+                ["resourceIds"] = resourceId,
+                ["resourceType"] = FavoriteResourceTypeOf(bangumi).ToString()
+            },
+            ct);
+
+    /// <summary>
+    /// 查询某资源是否已收藏。返回 true 才算「已收藏」；
+    /// 未登录 / 查询失败 / 无法判定一律返回 false，避免误导用户。
+    /// </summary>
+    public async Task<bool> IsFavoriteAsync(string resourceId, bool bangumi, CancellationToken ct = default)
+    {
+        try
+        {
+            var node = await _api.PostFormToHostAllowErrorAsync<JsonNode>(
+                AppHost,
+                "/rest/app/favorite/isFavorite",
+                new Dictionary<string, string>
+                {
+                    ["resourceIds"] = resourceId,
+                    ["resourceType"] = FavoriteResourceTypeOf(bangumi).ToString()
+                },
+                ct: ct);
+
+            if (node is not JsonObject root) return false;
+            if (ReadInt(root, "result", -1) != 0) return false;
+
+            return ReadFavoriteFlag(root, resourceId);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 宽松判定「是否已收藏」：isFavorite 响应键名未定死（可能是布尔、可能是按 id 的映射表），
+    /// 逐个尝试常见形态，任一命中 true 即认为已收藏。
+    /// </summary>
+    internal static bool ReadFavoriteFlag(JsonObject root, string resourceId)
+    {
+        // ① 直接布尔：{isFavorite: true} / {data: true} / {favorite: true}
+        foreach (var key in new[] { "isFavorite", "data", "favorite", "stowed", "isStowed" })
+        {
+            if (root[key] is JsonValue value && value.TryGetValue<bool>(out var b) && b)
+            {
+                return true;
+            }
+        }
+
+        // ② 按资源 id 的映射表：{isFavorite: {"<id>": true}} 或 {data: {...}}
+        foreach (var key in new[] { "isFavorite", "data" })
+        {
+            if (root[key] is JsonObject map && map[resourceId] is JsonValue entry &&
+                entry.TryGetValue<bool>(out var mb) && mb)
+            {
+                return true;
+            }
+        }
+
+        // ③ 列表里出现本资源且标记为已收藏
+        if (root["list"] is JsonArray arr)
+        {
+            foreach (var entry in arr)
+            {
+                if (entry is not JsonObject item) continue;
+                if (ReadString(item, "resourceId") == resourceId || ReadString(item, "id") == resourceId)
+                {
+                    if (ReadInt(item, "isFavorite", 0) == 1 || ReadInt(item, "stowState", 0) == 1)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<FavoriteResult> PostFavoriteAsync(string path, Dictionary<string, string> form, CancellationToken ct)
+    {
+        try
+        {
+            var node = await _api.PostFormToHostAllowErrorAsync<JsonNode>(AppHost, path, form, ct: ct);
+            var result = new FavoriteResult { Result = -1 };
+            if (node is JsonObject root)
+            {
+                result.Result = ReadInt(root, "result", -1);
+                result.ErrorMessage = ReadString(root, "error_msg") is { Length: > 0 } msg ? msg : null;
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            return new FavoriteResult { Result = -1, ErrorMessage = ex.Message };
         }
     }
 

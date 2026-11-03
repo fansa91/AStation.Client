@@ -99,3 +99,17 @@ public class FavoritePage
     /// <summary>下一页游标有效且不是 "0"（接口用 "0" 表示首屏，尾页会返回空串或原样回 "0"）</summary>
     public bool HasMore => !string.IsNullOrWhiteSpace(Cursor) && Cursor != "0" && Items.Count > 0;
 }
+
+/// <summary>收藏 / 取消收藏 / 查询状态等写操作的结果。</summary>
+public class FavoriteResult
+{
+    public int Result { get; set; }
+
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>result=0 成功</summary>
+    public bool Success => Result == 0;
+
+    /// <summary>result=-401 未登录 / 登录态失效</summary>
+    public bool NotLoggedIn => Result == -401;
+}

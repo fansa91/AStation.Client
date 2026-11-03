@@ -226,4 +226,25 @@ public class UserProfileServiceTest
         Assert.Equal("1.2万", MetricFormat.Count(12345));
         Assert.Equal("1.5亿", MetricFormat.Count(150_000_000));
     }
+
+    [Fact]
+    public void 收藏系resourceType_视频9番剧1()
+    {
+        // 收藏系与播放系不同：视频 9（播放系是 2），番剧 1
+        Assert.Equal(9, FavoriteService.FavoriteResourceTypeOf(bangumi: false));
+        Assert.Equal(1, FavoriteService.FavoriteResourceTypeOf(bangumi: true));
+    }
+
+    [Theory]
+    [InlineData("""{"result":0,"isFavorite":true}""", true)]
+    [InlineData("""{"result":0,"data":true}""", true)]
+    [InlineData("""{"result":0,"isFavorite":{"28574231":true}}""", true)]
+    [InlineData("""{"result":0,"data":{"28574231":true}}""", true)]
+    [InlineData("""{"result":0,"isFavorite":false}""", false)]
+    [InlineData("""{"result":0,"isFavorite":{"999999":true}}""", false)]
+    public void 已收藏判定_各种响应形态(string json, bool expected)
+    {
+        var root = JsonNode.Parse(json)! as JsonObject;
+        Assert.Equal(expected, FavoriteService.ReadFavoriteFlag(root!, "28574231"));
+    }
 }

@@ -91,6 +91,43 @@ public class HistoryServiceTest
     }
 
     [Fact]
+    public void Parse_WebShapeWithoutResultField_ShouldSucceed()
+    {
+        // Web 端成功响应的顶层没有 result 字段（ACFUN_API.md 2026-11-02 实锤），
+        // 只要 histories 是数组就算拿到数据，不能被当成失败。
+        var page = Parse("""
+        {
+          "pageSize": 20,
+          "histories": [
+            {
+              "resourceId": 28574231,
+              "title": "某视频",
+              "resourceType": 2,
+              "durationSeconds": 100,
+              "playedSeconds": 50
+            }
+          ],
+          "totalCount": 1,
+          "pageNo": 1
+        }
+        """);
+
+        Assert.Equal(0, page.Result);
+        Assert.Single(page.Items);
+        Assert.Equal("某视频", page.Items[0].Title);
+    }
+
+    [Fact]
+    public void Parse_NoResultAndNoHistories_ShouldBeFailure()
+    {
+        // 既没有 result=0 也没有 histories，才判失败
+        var page = Parse("""{"pageNo":1,"pageSize":20}""");
+
+        Assert.Equal(-1, page.Result);
+        Assert.Empty(page.Items);
+    }
+
+    [Fact]
     public void Parse_BrokenShape_ShouldNotThrow()
     {
         var page = Parse("""{"result":0,"histories":[{"title":""},{"noTitle":1},null]}""");

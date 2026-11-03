@@ -165,7 +165,10 @@
                                     Style="{StaticResource ChipButtonStyle}"
                                     ToolTipService.ToolTip="收藏">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <FontIcon FontSize="12" Glyph="&#xE734;" />
+                                        <FontIcon
+                                            x:Name="FavoriteIcon"
+                                            FontSize="12"
+                                            Glyph="&#xE734;" />
                                         <TextBlock x:Name="FavoriteText" FontSize="12" Text="收藏" />
                                     </StackPanel>
                                 </Button>

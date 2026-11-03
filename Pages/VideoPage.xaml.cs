@@ -44,6 +44,7 @@ public sealed partial class VideoPage : Page
     private readonly BangumiService _bangumi = ServiceLocator.Bangumi;
     private readonly CommentService _comment = ServiceLocator.Comment;
     private readonly RelatedService _related = ServiceLocator.Related;
+    private readonly FavoriteService _favorite = ServiceLocator.Favorite;
 
     private readonly DispatcherTimer _danmakuTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
     private readonly List<ClientDanmaku> _danmakus = new();
@@ -86,6 +87,15 @@ public sealed partial class VideoPage : Page
 
     /// <summary>简介是否已展开（超过两行时才显示切换按钮）</summary>
     private bool _descriptionExpanded;
+
+    /// <summary>当前资源的收藏状态。null 表示尚未查询（未登录 / 加载中），显示为「未收藏」外观</summary>
+    private bool? _favoriteState;
+
+    /// <summary>收藏写操作正在进行（防连点）</summary>
+    private bool _favoriteBusy;
+
+    /// <summary>加载成功后是否已查过一次收藏状态（避免每次切分P都重复查）</summary>
+    private bool _favoriteQueried;
 
     /// <summary>番剧元信息的固定部分（不含「当前第N集」）</summary>
     private List<string> _bangumiMetaBase = new();
@@ -309,6 +319,12 @@ public sealed partial class VideoPage : Page
         _mkey = mkey;
         _currentVideoId = videoId ?? string.Empty;
 
+        // 换资源即重置收藏状态，稍后随登录态查一次
+        _favoriteState = null;
+        _favoriteQueried = false;
+        _favoriteBusy = false;
+        SetFavoriteVisual(false, busy: false);
+
         _channelId = string.Empty;
         _commentPage = 0;
         _commentsLoaded = false;
@@ -343,6 +359,9 @@ public sealed partial class VideoPage : Page
 
         await PlayCurrentAsync();
         UpdateEpisodeButtons();
+
+        // 资源已定，登录态下查一次「我是否收藏过」，不阻塞播放
+        _ = RefreshFavoriteStateAsync();
 
         // 列表已填充，刷新右栏空状态与计数（否则会残留"没有分P信息"压在列表上）
         // 单P / 单集视频没得可选，默认落在「评论」上，右栏不至于一打开就是空的
@@ -794,14 +813,95 @@ public sealed partial class VideoPage : Page
     }
 
     /// <summary>
-    /// 点赞 / 收藏：AcFun 的写接口需要登录态，当前版本只读。
+    /// 点赞：AcFun 的点赞写接口走快手 zt 互动网关（interact/*），需登录态，当前版本尚未接入。
     /// 做成真正的按钮（可聚焦、有悬停反馈），点击时明确说明而不是装死。
     /// </summary>
     private void LikeButton_Click(object sender, RoutedEventArgs e)
-        => ShowUnavailableFlyout((FrameworkElement)sender, "点赞", "点赞需要登录态的写接口，当前版本尚未接入。");
+        => ShowUnavailableFlyout((FrameworkElement)sender, "点赞", "点赞走快手互动网关的写接口，需登录态，当前版本尚未接入。");
 
-    private void FavoriteButton_Click(object sender, RoutedEventArgs e)
-        => ShowUnavailableFlyout((FrameworkElement)sender, "收藏", "收藏需要登录态的写接口，当前版本尚未接入。");
+    /// <summary>
+    /// 收藏 / 取消收藏（需登录）。
+    /// 走 App 基址 <c>favorite / unFavorite</c> 三件套，视频 resourceType=9、番剧=1（收藏系枚举）。
+    /// 未登录时点一下就引导去登录；写操作 -401 说明会话失效，清登录态并提示重登。
+    /// </summary>
+    private async void FavoriteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_resourceId) || _favoriteBusy)
+        {
+            return;
+        }
+
+        if (!AccountState.IsLoggedIn)
+        {
+            App.MainWindowInstance?.OpenOverlay(typeof(LoginPage));
+            return;
+        }
+
+        _favoriteBusy = true;
+        bool target = _favoriteState != true; // 当前非已收藏 → 要收藏；否则 → 取消
+        SetFavoriteVisual(_favoriteState == true, busy: true);
+
+        var result = target
+            ? await _favorite.AddFavoriteAsync(_resourceId, _isBangumi)
+            : await _favorite.RemoveFavoriteAsync(_resourceId, _isBangumi);
+
+        if (result.Success)
+        {
+            _favoriteState = target;
+            SetFavoriteVisual(target, busy: false);
+            Overlay.ShowStatus(target ? "已加入收藏" : "已取消收藏", spinner: false);
+        }
+        else if (result.NotLoggedIn)
+        {
+            // 会话失效：清登录态，按钮回到未收藏外观，提示重新登录
+            SessionStore.Clear(ServiceLocator.Api);
+            AccountState.Clear();
+            _favoriteState = null;
+            SetFavoriteVisual(false, busy: false);
+            Overlay.ShowStatus("登录态已失效，请重新登录", spinner: false);
+        }
+        else
+        {
+            SetFavoriteVisual(_favoriteState == true, busy: false);
+            Overlay.ShowStatus(string.IsNullOrWhiteSpace(result.ErrorMessage)
+                ? "收藏操作失败，请稍后再试"
+                : $"收藏操作失败：{result.ErrorMessage}", spinner: false);
+        }
+
+        _favoriteBusy = false;
+    }
+
+    /// <summary>
+    /// 进播放页时查一次当前资源的收藏状态（仅登录态），
+    /// 用图标颜色表达「我是否收藏」，不覆盖收藏数文案。同一资源只查一次。
+    /// </summary>
+    private async Task RefreshFavoriteStateAsync()
+    {
+        if (_favoriteQueried) return;
+        _favoriteQueried = true;
+
+        if (!AccountState.IsLoggedIn || string.IsNullOrWhiteSpace(_resourceId))
+        {
+            SetFavoriteVisual(false, busy: false);
+            return;
+        }
+
+        _favoriteState = await _favorite.IsFavoriteAsync(_resourceId, _isBangumi);
+        SetFavoriteVisual(_favoriteState == true, busy: false);
+    }
+
+    /// <summary>收藏按钮外观：已收藏金黄实心，未收藏灰；加载中降透明并禁点。</summary>
+    private void SetFavoriteVisual(bool favorited, bool busy)
+    {
+        FavoriteButton.IsEnabled = !busy;
+        var color = favorited
+            ? Windows.UI.Color.FromArgb(0xFF, 0xFF, 0xB0, 0x00)
+            : Windows.UI.Color.FromArgb(0xFF, 0x8A, 0x8A, 0x8A);
+        var brush = new SolidColorBrush(color);
+        FavoriteIcon.Foreground = brush;
+        FavoriteText.Foreground = brush;
+        FavoriteButton.Opacity = busy ? 0.5 : 1.0;
+    }
 
     private static void ShowUnavailableFlyout(FrameworkElement target, string title, string message)
     {

@@ -6,8 +6,10 @@ namespace AStation_Client.Services;
 /// 播放历史（服务端，需登录）。
 ///
 /// 接口：POST /rest/pc-direct/browse/history/list
-///   form: pageNo / pageSize / resourceTypes（可重复，1 = 番剧、2 = 视频）
-///   响应: { result, pageNo, pageSize, totalCount, histories[] }
+///   form: pageNo / pageSize / resourceTypes（Web 端传空串即「全部类型」）
+///   响应: { pageSize, histories[], totalCount, pageNo }
+///   **注意：成功的响应顶层没有 result 字段**（ACFUN_API.md 2026-11-02 实锤），
+///   因此 Parse 里 result 缺失不能判失败——只要 histories 是数组就算拿到数据。
 ///   未登录: HTTP 401 + {"result":-401,"error_msg":"user not login"}
 ///
 /// histories[] 关键字段：
@@ -15,8 +17,8 @@ namespace AStation_Client.Services;
 ///   durationSecondsShow（"07:26"）/ playedSecondsShow（"已看完"）/ durationSeconds / playedSeconds /
 ///   browseTime（毫秒时间戳）/ dougaVideoTitle（分P名）/ bangumiItemEpisodeName（番剧集名）/ user.name
 ///
-/// 注意 resourceTypes 在官方文档里是**重复键**（1 和 2 各来一次），
-/// Dictionary 版 PostForm 会去重，所以走支持重复键的那个重载。
+/// 服务端历史由 App 端 protobuf 上报通道（report/playContent + log/action）自动写入，
+/// 客户端正常取流即可积累记录，这里只负责读。
 /// </summary>
 public class HistoryService
 {
@@ -32,7 +34,8 @@ public class HistoryService
     internal ApiService GetApiForTest() => _api;
 
     /// <summary>
-    /// 取一页播放历史。<paramref name="includeBangumi"/> 同时要番剧（resourceTypes 1 + 2）。
+    /// 取一页播放历史。<paramref name="includeBangumi"/> 为 true 时按官方 Web 端标准传空串
+    ///（空串 = 全部类型，番剧 + 视频都在内）；为 false 时只取视频（"2"）。
     /// </summary>
     public async Task<HistoryPage> GetHistoryAsync(
         int pageNo = 1,
@@ -40,25 +43,28 @@ public class HistoryService
         bool includeBangumi = true,
         CancellationToken ct = default)
     {
+        // Web 端 resourceTypes 是单值：空串 = 全部类型，"2" = 只视频（ACFUN_API.md 实锤）。
+        // 旧版误传重复键 1/2，与文档不符；改为空串，顺带覆盖了文章等其他类型。
         var form = new List<KeyValuePair<string, string>>
         {
             new("pageNo", Math.Max(1, pageNo).ToString()),
-            new("pageSize", Math.Max(1, pageSize).ToString())
+            new("pageSize", Math.Max(1, pageSize).ToString()),
+            new("resourceTypes", includeBangumi ? string.Empty : "2")
         };
-        if (includeBangumi)
-        {
-            form.Add(new("resourceTypes", "1"));
-            form.Add(new("resourceTypes", "2"));
-        }
 
         try
         {
             var response = await _api.PostFormAllowErrorAsync<JsonNode>(Path, form, ct);
             var page = Parse(response);
 
-            // resourceTypes 万一不被接受（服务端只认单值），退一步不带类型再试一次。
-            // -401 是确定的「没登录」，不用再试。
-            if (page.Result != 0 && page.Result != -401 && includeBangumi)
+            // -401 是确定的「没登录」，直接返回；其余非 0 才尝试退一步。
+            if (page.Result == 0 || page.Result == -401)
+            {
+                return page;
+            }
+
+            // 兜底：全部类型取失败时，退到「只视频」再试一次。
+            if (includeBangumi)
             {
                 return await GetHistoryAsync(pageNo, pageSize, includeBangumi: false, ct);
             }
@@ -76,7 +82,16 @@ public class HistoryService
         var page = new HistoryPage();
         if (node is not JsonObject root) return page;
 
-        page.Result = root["result"]?.GetValue<int>() ?? -1;
+        // Web 端成功响应没有 result 字段（顶层 {pageSize, histories, totalCount, pageNo}），
+        // 缺失时按「拿到了数据就算成功」处理；只有显式写了非 0 的 result 才算失败。
+        if (root["result"] is not null && root["result"].GetValue<int>() is int result && result != 0)
+        {
+            page.Result = result;
+        }
+        else
+        {
+            page.Result = root["histories"] is JsonArray ? 0 : -1;
+        }
         page.ErrorMessage = root["error_msg"]?.GetValue<string>();
         page.TotalCount = root["totalCount"]?.GetValue<int>() ?? 0;
 
