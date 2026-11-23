@@ -12,6 +12,12 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
 
+    <!-- 关掉单文件兼容性分析器：它会隐式引入 Microsoft.NET.ILLink.Tasks，
+         而该包的版本跟随 SDK 补丁号（本机 10.0.13 / CI 10.0.15）。
+         这会让 packages.lock.json 与 SDK 补丁强耦合，CI 一换 SDK 就撞 NU1004。
+         单文件发布本身已由 CI 实际产出验证，不靠这个分析器兜底。 -->
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+
     <!-- 锁定 NuGet 依赖（packages.lock.json 入库），CI 以 locked 模式还原，保证可复现 -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
