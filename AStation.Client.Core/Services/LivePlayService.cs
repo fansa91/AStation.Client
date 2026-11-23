@@ -98,14 +98,27 @@ public class LivePlayService
     /// <summary>解析 videoPlayRes（可能是字符串化 JSON）</summary>
     internal static void ParseVideoPlayRes(JsonNode? node, LiveStreamResult result)
     {
+        // 没下发 videoPlayRes：按「没推流」处理（走方法末尾的统一文案）
+        if (node is null) return;
+
         JsonNode? root = node;
         if (node is JsonValue value && value.TryGetValue<string>(out var text))
         {
             if (string.IsNullOrWhiteSpace(text)) return;
-            try { root = JsonNode.Parse(text); } catch { return; }
+            try { root = JsonNode.Parse(text); }
+            catch
+            {
+                // 解析失败 ≠ 主播没推流：接口结构变更时不该误报停播
+                result.ErrorMessage = "直播流信息解析失败（接口可能已变更）";
+                return;
+            }
         }
 
-        if (root is not JsonObject obj) return;
+        if (root is not JsonObject obj)
+        {
+            result.ErrorMessage = "直播流信息结构异常（接口可能已变更）";
+            return;
+        }
 
         result.StreamName = VideoDetailService.ReadString(obj["streamName"]) ?? string.Empty;
 

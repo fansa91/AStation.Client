@@ -54,15 +54,9 @@ public class RankService
             ["rankPeriod"] = ToPeriodParam(period)
         };
 
-        JsonNode? json;
-        try
-        {
-            json = await _api.GetAsync<JsonNode>("/rest/pc-direct/rank/channel", query, ct);
-        }
-        catch
-        {
-            return new List<RankEntry>();
-        }
+        // 网络异常直接向上抛：页面有错误分支（StatePanel + 重试），
+        // 在这里吞掉只会把「加载失败」伪装成「空榜」
+        var json = await _api.GetAsync<JsonNode>("/rest/pc-direct/rank/channel", query, ct);
 
         return json is null ? new List<RankEntry>() : ParseRankList(json);
     }

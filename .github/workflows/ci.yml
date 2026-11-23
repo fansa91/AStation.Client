@@ -1,0 +1,37 @@
+name: CI
+
+# 普通推送 / PR 的门禁：测试 + 三个工程可编译。
+# 发布流程在 release.yml（tag 触发），这里的定位是尽早拦住破坏构建 / 测试的提交。
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Test
+        run: |
+          dotnet restore AStation.Client.Tests/AStation.Client.Tests.csproj --locked-mode
+          dotnet test AStation.Client.Tests/AStation.Client.Tests.csproj --no-restore
+
+      - name: Build desktop
+        run: |
+          dotnet restore AStation.Client.csproj --locked-mode
+          dotnet build AStation.Client.csproj -c Debug --no-restore

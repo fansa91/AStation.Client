@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- 锁定 NuGet 依赖（packages.lock.json 入库），CI 以 locked 模式还原，保证可复现 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
 
   <ItemGroup>

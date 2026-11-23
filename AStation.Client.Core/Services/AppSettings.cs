@@ -112,11 +112,19 @@ public class AppSettings
     {
         try
         {
-            var dir = Path.GetDirectoryName(SettingsPath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            lock (SyncRoot)
+            {
+                var dir = Path.GetDirectoryName(SettingsPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsPath, json);
+                var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+
+                // 原子写：先落临时文件再替换。并发保存或中途崩溃都不会留下半截 settings.json
+                //（参照 EmoteCatalog 的缓存写入做法）
+                var tmpPath = SettingsPath + ".tmp";
+                File.WriteAllText(tmpPath, json);
+                File.Move(tmpPath, SettingsPath, overwrite: true);
+            }
         }
         catch
         {

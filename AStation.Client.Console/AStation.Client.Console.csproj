@@ -6,6 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <!-- 单文件发布：命令行工具解压就是一个 exe（示例配置仍作为独立文件随包），
+         不再随包携带上百个 dll；框架依赖 / 自包含两种发布方式都适用 -->
+    <PublishSingleFile Condition="'$(PublishSingleFile)' == ''">true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- 锁定 NuGet 依赖（packages.lock.json 入库），CI 以 locked 模式还原，保证可复现 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- 声明发布用的 RID：发布链路带 RID 的锁定还原要求 lock 里有 win-x64 段。
+         声明后，无 RID 的本地还原也会生成同样的段，lock 不会两边来回改写。 -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+
     <AssemblyName>AStation.Client.Console</AssemblyName>
     <!-- 命名空间不用 AStation_Client.Console：类名叫 Console 的命名空间会让
          System.Console 解析成命名空间，代码里所有 Console.Write 都会编译不过。

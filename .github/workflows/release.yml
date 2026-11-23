@@ -26,9 +26,31 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
 
 jobs:
+
+  # 测试先行：不过测试不进构建（发布是 tag 触发，这里把住质量门）
+  test:
+    name: Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Test
+        run: |
+          dotnet restore AStation.Client.Tests/AStation.Client.Tests.csproj --locked-mode
+          dotnet test AStation.Client.Tests/AStation.Client.Tests.csproj --no-restore
+
   # ─────────────────────────── 构建矩阵：自包含 / 框架依赖 ───────────────────────────
   build:
     name: Build x64 (${{ matrix.flavor }})
+    needs: test
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -49,6 +71,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+          # NuGet 缓存按 lock 文件命中：不再每次全量拉数百 MB 的 WinAppSDK
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
       # ── 版本号全部从 tag 推导，tag 不合法直接失败，避免发出版本号混乱的包 ──
       - name: Resolve version from tag
@@ -69,7 +94,7 @@ jobs:
           Write-Host "版本号：$version（来源 tag：$tag）"
 
       - name: Restore
-        run: dotnet restore AStation.Client.csproj -r win-x64
+        run: dotnet restore AStation.Client.csproj -r win-x64 --locked-mode
 
       # ── 发布 ──
       # SelfContained 由矩阵决定（.NET 运行时是否内置）；
@@ -159,6 +184,7 @@ jobs:
   # ─────────────────── 命令行工具矩阵：自包含 / 框架依赖（无 WinUI 依赖） ───────────────────
   build-console:
     name: Build Console x64 (${{ matrix.flavor }})
+    needs: test
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -177,6 +203,8 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
       - name: Resolve version from tag
         id: ver
@@ -193,6 +221,9 @@ jobs:
           "version=$($Matches[1])" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "tag=$tag"               | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "版本号：$($Matches[1])（来源 tag：$tag）"
+
+      - name: Restore
+        run: dotnet restore AStation.Client.Console/AStation.Client.Console.csproj -r win-x64 --locked-mode
 
       - name: Publish
         id: publish

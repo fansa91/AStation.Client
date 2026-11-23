@@ -15,9 +15,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
-    <!-- 版本号默认值（README 里写的 0.1 对应这里）。
+    <!-- 钉死 NuGet 版本 + packages.lock.json 入库：构建可复现，不再因 Version="*" 漂移而换包。
+         CI 以 locked 模式还原；本地改依赖后重新 dotnet restore 并提交 lock 文件。 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- 版本号默认值（README 里写的 0.2 对应这里）。
          CI 按 git tag 覆盖：-p:Version=<tag 去掉 v> -->
-    <Version>0.1.4</Version>
+    <Version>0.2.0</Version>
     <!-- 本地构建的 ProductVersion 不要带 +commitHash 尾巴，发布包里版本号干净一些 -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AssemblyTitle>AStation.Client</AssemblyTitle>
@@ -96,9 +100,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="*" />
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="*" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.8.0" />
     <!-- 直播拉流：AcFun 直播只提供 FLV，Windows Media Foundation 不支持 FLV，
          用 FFmpegInteropX 把 FLV 解码后交给 MediaPlayer -->
     <PackageReference Include="FFmpegInteropX" Version="2.1.0.81200" />

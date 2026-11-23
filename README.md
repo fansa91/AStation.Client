@@ -4,7 +4,7 @@
 
 AcFun 第三方桌面客户端，基于 **WinUI 3 / .NET 10**，unpackaged 直跑（不需要 MSIX 安装）。
 
-当前版本 **0.1** · Windows 10 1809 及以上 / x64
+当前版本 **0.2** · Windows 10 1809 及以上 / x64
 
 ---
 

@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using FFmpegInteropX;
-using Windows.Media.Playback;
 
 namespace AStation_Client.Services;
 
@@ -14,11 +13,15 @@ namespace AStation_Client.Services;
 public static class FFmpegPlayback
 {
     /// <summary>
-    /// 为 FLV 地址创建可播放源。
+    /// 为 FLV / HLS 地址创建 FFmpeg 解码源。
+    ///
+    /// 返回 <see cref="FFmpegMediaSource"/> 本体而不是直接给 MediaPlaybackItem：
+    /// 调用方必须持有引用并在换源 / 离开页面时 Dispose，
+    /// 否则 native 解码上下文只能等 GC 终结器兜底（直播常驻解码是显著的泄漏源）。
     /// </summary>
     /// <param name="url">FLV / HLS 地址（带时效签名）</param>
     /// <param name="hardwareDecode">true 走 D3D11 硬解，false 走 FFmpeg 软解</param>
-    public static async Task<IMediaPlaybackSource> CreateAsync(string url, bool hardwareDecode = true)
+    public static async Task<FFmpegMediaSource> CreateAsync(string url, bool hardwareDecode = true)
     {
         if (string.IsNullOrWhiteSpace(url)) throw new ArgumentException("拉流地址为空", nameof(url));
 
@@ -30,7 +33,6 @@ public static class FFmpegPlayback
             config.Video.VideoDecoderMode = VideoDecoderMode.ForceFFmpegSoftwareDecoder;
         }
 
-        var source = await FFmpegMediaSource.CreateFromUriAsync(url, config);
-        return source.CreateMediaPlaybackItem();
+        return await FFmpegMediaSource.CreateFromUriAsync(url, config);
     }
 }

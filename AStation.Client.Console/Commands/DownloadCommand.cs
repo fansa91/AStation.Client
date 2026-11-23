@@ -85,7 +85,7 @@ public static class DownloadCommand
             return 0;
         }
 
-        return TryRemux(tempPath, outPath);
+        return await TryRemuxAsync(tempPath, outPath);
     }
 
     private static void RenderProgress(double value)
@@ -96,7 +96,7 @@ public static class DownloadCommand
     }
 
     /// <summary>用 ffmpeg 无损转封装；没有 ffmpeg 就保留 ts</summary>
-    private static int TryRemux(string tsPath, string mp4Path)
+    private static async Task<int> TryRemuxAsync(string tsPath, string mp4Path)
     {
         string? ffmpeg = FindOnPath("ffmpeg.exe") ?? FindOnPath("ffmpeg");
         if (ffmpeg is null)
@@ -112,6 +112,7 @@ public static class DownloadCommand
             RedirectStandardError = true,
             RedirectStandardOutput = true,
         };
+        info.ArgumentList.Add("-nostdin");
         info.ArgumentList.Add("-y");
         info.ArgumentList.Add("-loglevel");
         info.ArgumentList.Add("error");
@@ -125,11 +126,21 @@ public static class DownloadCommand
         {
             using var process = Process.Start(info);
             if (process is null) throw new InvalidOperationException("ffmpeg 启动失败");
-            process.WaitForExit();
+
+            // 重定向了输出就必须先读后等：ffmpeg 的输出一旦超过系统管道缓冲，
+            // 同步 WaitForExit 会和写端互相卡死；-nostdin 则避免它反过来等终端输入
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
 
             if (process.ExitCode != 0)
             {
-                Out.Warn("  ffmpeg 转封装失败，保留 ts");
+                // 失败原因通常在 stderr 里，截一段出来，别只说「失败了」
+                var stderr = (await stderrTask).Trim();
+                var reason = stderr.Length > 0
+                    ? $"（{(stderr.Length > 300 ? stderr[..300] + "…" : stderr)}）"
+                    : string.Empty;
+                Out.Warn($"  ffmpeg 转封装失败，保留 ts{reason}");
                 Out.Line($"  {Path.GetFullPath(tsPath)}");
                 return 0;
             }

@@ -39,6 +39,13 @@ public sealed partial class UserPage : Page
     private bool _favLoaded;
     private string? _favLoadedForUser;
 
+    // 加载代际：快速切分类 / 换账号 / 退出登录时，在途响应作废，不再回写列表
+    //（*_loadingGeneration 记录在途请求所属代际，用于区分「防连点」与「顶掉旧请求」）
+    private int _historyGeneration;
+    private int _historyLoadingGeneration = -1;
+    private int _favGeneration;
+    private int _favLoadingGeneration = -1;
+
     public ObservableCollection<HistoryItem> History { get; } = new();
 
     public ObservableCollection<FavoriteItem> Favorites { get; } = new();
@@ -160,6 +167,10 @@ public sealed partial class UserPage : Page
     {
         SessionStore.Clear(ServiceLocator.Api);
         AccountState.Clear();
+
+        // 登录态已变：作废在途的历史 / 收藏响应，旧数据不得再回写列表
+        _historyGeneration++;
+        _favGeneration++;
 
         History.Clear();
         _loadedForUser = null;
@@ -342,14 +353,26 @@ public sealed partial class UserPage : Page
 
     private async Task LoadHistoryAsync(bool reset)
     {
-        if (_loading) return;
         if (!AccountState.IsLoggedIn)
         {
             ShowHistoryEmpty();
             return;
         }
 
+        // reset（换账号 / 重试）总是开新代际；「加载更多」只在空闲时发起（防连点）
+        int generation;
+        if (reset)
+        {
+            generation = ++_historyGeneration;
+        }
+        else
+        {
+            if (_loading && _historyLoadingGeneration == _historyGeneration) return;
+            generation = _historyGeneration;
+        }
+
         _loading = true;
+        _historyLoadingGeneration = generation;
 
         if (reset)
         {
@@ -370,6 +393,9 @@ public sealed partial class UserPage : Page
         try
         {
             var page = await ServiceLocator.History.GetHistoryAsync(_pageNo + 1, PageSize);
+
+            // 等响应期间退出了登录 / 换了账号：旧响应作废
+            if (generation != _historyGeneration) return;
 
             if (page.Result == -401)
             {
@@ -416,14 +442,19 @@ public sealed partial class UserPage : Page
         }
         catch (Exception ex)
         {
+            if (generation != _historyGeneration) return;
             App.WriteLog("UserPage.LoadHistory", ex);
             ShowHistoryError(ex.Message);
         }
         finally
         {
-            _loading = false;
-            MoreRing.IsActive = false;
-            MoreRing.Visibility = Visibility.Collapsed;
+            // 旧代际的收尾不能替新代际把加载态关掉
+            if (generation == _historyGeneration)
+            {
+                _loading = false;
+                MoreRing.IsActive = false;
+                MoreRing.Visibility = Visibility.Collapsed;
+            }
         }
     }
 
@@ -472,14 +503,26 @@ public sealed partial class UserPage : Page
     /// </summary>
     private async Task LoadFavoritesAsync(bool reset)
     {
-        if (_favLoading) return;
         if (!AccountState.IsLoggedIn)
         {
             ShowCollectLoginState();
             return;
         }
 
+        // reset（切分类 / 首次进入）总是开新代际并顶掉在途请求；「加载更多」只在空闲时发起
+        int generation;
+        if (reset)
+        {
+            generation = ++_favGeneration;
+        }
+        else
+        {
+            if (_favLoading && _favLoadingGeneration == _favGeneration) return;
+            generation = _favGeneration;
+        }
+
         _favLoading = true;
+        _favLoadingGeneration = generation;
 
         if (reset)
         {
@@ -503,6 +546,9 @@ public sealed partial class UserPage : Page
         try
         {
             var page = await ServiceLocator.Favorite.GetFavoritesAsync(_kind, _favCursor, PageSize);
+
+            // 等响应期间切了分类 / 退出了登录：旧响应作废
+            if (generation != _favGeneration) return;
 
             if (page.Result == -401)
             {
@@ -538,6 +584,7 @@ public sealed partial class UserPage : Page
         }
         catch (Exception ex)
         {
+            if (generation != _favGeneration) return;
             App.WriteLog("UserPage.LoadFavorites", ex);
             CollectPanel.Visibility = Visibility.Visible;
             FavoriteListHost.Visibility = Visibility.Collapsed;
@@ -546,9 +593,13 @@ public sealed partial class UserPage : Page
         }
         finally
         {
-            _favLoading = false;
-            FavoriteRing.IsActive = false;
-            FavoriteRing.Visibility = Visibility.Collapsed;
+            // 旧代际的收尾不能替新代际把加载态关掉
+            if (generation == _favGeneration)
+            {
+                _favLoading = false;
+                FavoriteRing.IsActive = false;
+                FavoriteRing.Visibility = Visibility.Collapsed;
+            }
         }
     }
 

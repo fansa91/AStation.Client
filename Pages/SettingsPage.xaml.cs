@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -74,6 +75,18 @@ public sealed partial class SettingsPage : Page
         base.OnNavigatedTo(e);
         SettingsPathText.Text = AppSettings.SettingsPath;
         VersionText.Text = GetVersion();
+    }
+
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
+    {
+        base.OnNavigatedFrom(e);
+
+        // 离开页面前把防抖中的最后值落盘（改完设置马上退出应用也不丢最后一次改动）
+        if (_saveDebounceTimer is { IsRunning: true })
+        {
+            _saveDebounceTimer.Stop();
+            _settings.Save();
+        }
     }
 
     private static string GetVersion()
@@ -154,6 +167,30 @@ public sealed partial class SettingsPage : Page
     {
         if (_loading) return;
         _settings.Save();
+    }
+
+    private DispatcherQueueTimer? _saveDebounceTimer;
+
+    /// <summary>
+    /// 滑块每步步进都会触发一次 ValueChanged，拖一次要写几十次盘。
+    /// 这里做 500ms 防抖：停手后一次性落盘（值本身每步都已写进 _settings）。
+    /// </summary>
+    private void PersistDeferred()
+    {
+        if (_loading) return;
+
+        _saveDebounceTimer ??= CreateSaveDebounceTimer();
+        _saveDebounceTimer.Stop();
+        _saveDebounceTimer.Start();
+    }
+
+    private DispatcherQueueTimer CreateSaveDebounceTimer()
+    {
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(500);
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => _settings.Save();
+        return timer;
     }
 
     // ───────────── 外观 ─────────────
@@ -253,7 +290,7 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         _settings.DanmakuOpacity = Math.Round(OpacitySlider.Value, 2);
         OpacityValueText.Text = $"{OpacitySlider.Value * 100:0}%";
-        Persist();
+        PersistDeferred();
     }
 
     private void FontSizeSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -261,7 +298,7 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         _settings.DanmakuFontSize = FontSizeSlider.Value;
         FontSizeValueText.Text = $"{FontSizeSlider.Value:0}";
-        Persist();
+        PersistDeferred();
     }
 
     private void SpeedSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
@@ -269,7 +306,7 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         _settings.DanmakuSpeedSeconds = SpeedSlider.Value;
         SpeedValueText.Text = $"{SpeedSlider.Value:0.#} 秒横穿";
-        Persist();
+        PersistDeferred();
     }
 
     private void AreaBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -317,7 +354,7 @@ public sealed partial class SettingsPage : Page
         if (_loading) return;
         _settings.PageSize = (int)PageSizeSlider.Value;
         PageSizeValueText.Text = $"{PageSizeSlider.Value:0}";
-        Persist();
+        PersistDeferred();
     }
 
     private void OpenSettingsFolder_Click(object sender, RoutedEventArgs e)

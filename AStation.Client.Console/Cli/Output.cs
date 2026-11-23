@@ -24,9 +24,9 @@ public static class Out
 
     public static void Ok(string text) => Write(text, ConsoleColor.Green);
 
-    public static void Warn(string text) => Write(text, ConsoleColor.Yellow);
+    public static void Warn(string text) => WriteErr(text, ConsoleColor.Yellow);
 
-    public static void Error(string text) => Write(text, ConsoleColor.Red);
+    public static void Error(string text) => WriteErr(text, ConsoleColor.Red);
 
     public static void Dim(string text) => Write(text, ConsoleColor.DarkGray);
 
@@ -144,6 +144,24 @@ public static class Out
         var previous = Console.ForegroundColor;
         Console.ForegroundColor = color;
         Console.WriteLine(text);
+        Console.ForegroundColor = previous;
+    }
+
+    /// <summary>
+    /// 警告 / 错误走 stderr：stdout 要留给 `--json` 管道和正常结果输出，
+    /// 否则接 jq / 重定向到文件时错误文本会把数据流污染掉。
+    /// </summary>
+    private static void WriteErr(string text, ConsoleColor color)
+    {
+        if (!ColorEnabled)
+        {
+            Console.Error.WriteLine(text);
+            return;
+        }
+
+        var previous = Console.ForegroundColor;
+        Console.ForegroundColor = color;
+        Console.Error.WriteLine(text);
         Console.ForegroundColor = previous;
     }
 

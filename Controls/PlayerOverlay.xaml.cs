@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using AStation_Client.Services;
 using Windows.Media.Core;
@@ -37,6 +38,9 @@ public sealed partial class PlayerOverlay : UserControl
 
     /// <summary>用户正按住进度条拖动（此时不接受播放器的进度回写）</summary>
     private bool _isSeeking;
+
+    /// <summary>上次回写进度时的整秒数（PositionChanged 频率远高于显示精度，按秒节流）</summary>
+    private long _lastProgressSecond = -1;
 
     /// <summary>程序内部回写 Slider 时置位，避免触发 ValueChanged 里的 seek</summary>
     private bool _suppressProgress;
@@ -246,6 +250,8 @@ public sealed partial class PlayerOverlay : UserControl
     /// <summary>换集 / 换源时把进度与播放按钮复位（否则会短暂显示上一集的进度）</summary>
     public void ResetProgress()
     {
+        Interlocked.Exchange(ref _lastProgressSecond, -1);
+
         _suppressProgress = true;
         ProgressSlider.Maximum = 1;
         ProgressSlider.Value = 0;
@@ -649,8 +655,16 @@ public sealed partial class PlayerOverlay : UserControl
 
     private void PlaybackSession_PositionChanged(MediaPlaybackSession sender, object args)
     {
-        var duration = sender.NaturalDuration;
+        // 直播没有进度 UI，事件再密也不做任何事（原来每个事件都会排一个闭包到 UI 线程）
+        if (_liveMode) return;
+
         var position = sender.Position;
+
+        // 事件频率远高于显示精度：整秒没变化就什么都不做，连闭包都不分配
+        long second = (long)position.TotalSeconds;
+        if (second == Interlocked.Exchange(ref _lastProgressSecond, second)) return;
+
+        var duration = sender.NaturalDuration;
 
         // 事件在后台线程触发，动 UI 要回到 UI 线程
         DispatcherQueue.TryEnqueue(() =>

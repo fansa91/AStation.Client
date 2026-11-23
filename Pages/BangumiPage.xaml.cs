@@ -18,6 +18,12 @@ public sealed partial class BangumiPage : Page
     /// <summary>true = 我的追番（需登录），false = 番剧库（/bangumilist，免登录）</summary>
     private bool _showFavorites;
 
+    /// <summary>加载代际：快速切「番剧库 / 我的追番」时旧响应作废，防交叉写入列表</summary>
+    private int _loadGeneration;
+
+    /// <summary>最近一次加载是否失败：决定状态面板按钮是「重试」还是「去登录」</summary>
+    private bool _lastLoadFailed;
+
     public BangumiPage()
     {
         InitializeComponent();
@@ -36,21 +42,28 @@ public sealed partial class BangumiPage : Page
     /// </summary>
     private async Task LoadDataAsync()
     {
+        int generation = ++_loadGeneration;
+
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
         BangumiState.Hide();
 
         List<BangumiItem> items = new();
+        string? error = null;
         try
         {
             items = _showFavorites
                 ? await ServiceLocator.Bangumi.GetFavoriteBangumiAsync()
                 : await ServiceLocator.Bangumi.GetBangumiListAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            // 网络异常：按空处理
+            // 不再吞掉当空数据：空态文案分不清「没数据」和「网络挂了」
+            error = ex.Message;
         }
+
+        // 期间切了「番剧库 / 我的追番」：旧响应作废，不回写列表
+        if (generation != _loadGeneration) return;
 
         Items.Clear();
         foreach (var item in items)
@@ -62,6 +75,20 @@ public sealed partial class BangumiPage : Page
 
         LoadingRing.IsActive = false;
         LoadingRing.Visibility = Visibility.Collapsed;
+
+        // 失败要出错误态（带重试），而不是「暂无内容」
+        _lastLoadFailed = error is not null;
+        if (error is not null)
+        {
+            BangumiList.Visibility = Visibility.Collapsed;
+            BangumiScroll.Visibility = Visibility.Collapsed;
+            HintText.Visibility = Visibility.Collapsed;
+            BangumiState.ShowError(
+                _showFavorites ? "我的追番没加载出来" : "番剧库没加载出来",
+                error,
+                actionText: "重试");
+            return;
+        }
 
         UpdateEmptyState(items.Count);
 
@@ -136,6 +163,13 @@ public sealed partial class BangumiPage : Page
 
     private void BangumiState_ActionClick(object? sender, EventArgs e)
     {
+        // 加载失败后的「重试」重新拉数据；空态时的「去登录」保持原行为
+        if (_lastLoadFailed)
+        {
+            _ = LoadDataAsync();
+            return;
+        }
+
         if (App.MainWindowInstance is MainWindow mainWindow)
         {
             mainWindow.OpenOverlay(typeof(LoginPage));

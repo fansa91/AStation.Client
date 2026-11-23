@@ -20,6 +20,9 @@ public sealed partial class LivePage : Page
     private int _currentFilterId;
     private bool _categoriesBuilt;
 
+    /// <summary>加载代际：快速切分类时旧响应作废，防交叉写入列表</summary>
+    private int _loadGeneration;
+
     public LivePage()
     {
         InitializeComponent();
@@ -38,6 +41,8 @@ public sealed partial class LivePage : Page
     /// </summary>
     private async Task LoadDataAsync()
     {
+        int generation = ++_loadGeneration;
+
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
 
@@ -47,14 +52,19 @@ public sealed partial class LivePage : Page
         }
 
         LiveChannelResult? result = null;
+        string? error = null;
         try
         {
             result = await ServiceLocator.Live.GetChannelListAsync(_currentFilterId);
         }
-        catch
+        catch (Exception ex)
         {
-            // 网络异常：走下面的兜底
+            // 记下原因走兜底；兜底也失败才作为错误呈现（服务层已不再吞异常，这里能接到了）
+            error = ex.Message;
         }
+
+        // 期间已切了分类：旧加载作废，不再建芯片、不再走兜底
+        if (generation != _loadGeneration) return;
 
         if (!_categoriesBuilt && result is not null && result.Categories.Count > 0)
         {
@@ -71,11 +81,15 @@ public sealed partial class LivePage : Page
             {
                 items = await ServiceLocator.Live.GetHotLiveListAsync();
             }
-            catch
+            catch (Exception ex) when (error is null)
             {
-                // 保持为空
+                // 主接口已记录过错误时保留更相关的那条
+                error = ex.Message;
             }
         }
+
+        // 兜底请求期间也可能切了分类：旧响应不回写，新一轮加载会接管 LoadingRing 与列表
+        if (generation != _loadGeneration) return;
 
         Items.Clear();
         foreach (var item in items)
@@ -109,6 +123,13 @@ public sealed partial class LivePage : Page
         }
         // 空态由状态面板接手，条数说明就不必再显示了
         HintText.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+
+        // 两次都没拿到且确有错误：错误态 + 重试（原来吞异常会伪装成「该分类没有主播在线」）
+        if (empty && error is not null)
+        {
+            LiveState.ShowError("直播列表没加载出来", error, actionText: "重试");
+            return;
+        }
 
         if (empty)
         {

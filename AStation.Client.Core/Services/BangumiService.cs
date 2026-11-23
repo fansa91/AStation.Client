@@ -31,15 +31,9 @@ public class BangumiService
     /// </summary>
     public async Task<List<BangumiItem>> GetBangumiListAsync(CancellationToken ct = default)
     {
-        string? html;
-        try
-        {
-            html = await _api.GetStringAsync("/bangumilist", null, ct);
-        }
-        catch
-        {
-            return new List<BangumiItem>();
-        }
+        // 网络异常直接向上抛：页面有错误态（StatePanel + 重试），
+        // 吞掉会把「加载失败」伪装成「空番剧库」
+        string? html = await _api.GetStringAsync("/bangumilist", null, ct);
 
         if (string.IsNullOrWhiteSpace(html)) return new List<BangumiItem>();
 

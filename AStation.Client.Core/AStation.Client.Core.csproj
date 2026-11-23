@@ -5,6 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>AStation_Client</RootNamespace>
+    <!-- 锁定 NuGet 依赖（packages.lock.json 入库），CI 以 locked 模式还原，保证可复现 -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- 声明发布用的 RID：发布链路用「指定 win-x64 的 locked 还原」，
+         锁定模式要求 lock 文件里存在对应的 win-x64 运行时段。
+         不声明的话，无 RID 还原生成的 lock 只有 RID 无关段，
+         主工程 / Console 带 RID 还原时就会在本项目上撞 NU1004。 -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

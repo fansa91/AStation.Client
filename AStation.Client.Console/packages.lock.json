@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.13, )",
+        "resolved": "10.0.13",
+        "contentHash": "40yrBMsLEcjixBR4G+FiUaBPvxXIPSKJ2OgSrbOZcmSDBda4Sb0k7BWrfDpIvn3IvvDzwOL/tEPa6gDQfh6aRw=="
+      },
+      "AcFunDanmu": {
+        "type": "Transitive",
+        "resolved": "2.7.0",
+        "contentHash": "HY8L9HiH4/FFCQk4BIXbzSZvl/GiJAE4iU/w3pEC42mpFmZo1Jim1CkoMgDsG9EC9LJ+8QdpJbkHCzWalDRZ+g==",
+        "dependencies": {
+          "Google.Protobuf": "3.25.0",
+          "Microsoft.Extensions.Logging.Abstractions": "7.0.1"
+        }
+      },
+      "Google.Protobuf": {
+        "type": "Transitive",
+        "resolved": "3.25.0",
+        "contentHash": "pIEkH1IqZV1iK8J5MYdG1kOyY0EoQLB6yEKvBq12RYNtvGXwCvnQg5zQsFmcqAEPtIZvSqPozIbUZaEd5a2gCg=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "Transitive",
+        "resolved": "7.0.1",
+        "contentHash": "pkeBFx0vqMW/A3aUVHh7MPu3WkBhaVlezhSZeb1c9XD0vUReYH1TLFSy5MxJgZfmz5LZzYoErMorlYZiwpOoNA=="
+      },
+      "astation.client.core": {
+        "type": "Project",
+        "dependencies": {
+          "AcFunDanmu": "[2.7.0, )"
+        }
+      }
+    },
+    "net10.0/win-x64": {}
+  }
+}

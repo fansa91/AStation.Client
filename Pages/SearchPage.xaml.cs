@@ -26,6 +26,12 @@ public sealed partial class SearchPage : Page
     private bool _searched;
     private bool _loadFailed;
 
+    /// <summary>加载代际：快速连搜 / 换排序时旧响应作废，不回写到新关键词的结果区</summary>
+    private int _loadGeneration;
+
+    /// <summary>当前在途加载所属代际（-1 = 无在途加载），用于区分「防连点」与「换代顶掉旧请求」</summary>
+    private int _loadingGeneration = -1;
+
     public SearchPage()
     {
         InitializeComponent();
@@ -125,6 +131,7 @@ public sealed partial class SearchPage : Page
     private async Task SearchAsync(string keyword)
     {
         _keyword = keyword;
+        int gen = ++_loadGeneration;   // 作废还在路上的上一次搜索响应
         _loadFailed = false;
         _searched = true;
 
@@ -134,13 +141,18 @@ public sealed partial class SearchPage : Page
         ResultCountText.Text = string.Empty;
         ResultScroll.ChangeView(null, 0, null, disableAnimation: true);
 
-        await LoadAsync();
+        await LoadAsync(gen);
     }
 
-    private async Task LoadAsync()
+    private async Task LoadAsync(int generation)
     {
-        if (_loading || string.IsNullOrWhiteSpace(_keyword)) return;
+        if (string.IsNullOrWhiteSpace(_keyword)) return;
+
+        // 同代已在加载：防连点（重试按钮）；换代在途：新请求顶掉旧请求，不再把新请求直接丢弃
+        if (_loading && _loadingGeneration == generation) return;
+
         _loading = true;
+        _loadingGeneration = generation;
 
         // 加载中别让人连点排序，否则几个请求会互相覆盖
         SortBar.IsHitTestVisible = false;
@@ -150,6 +162,10 @@ public sealed partial class SearchPage : Page
         try
         {
             var result = await ServiceLocator.Search.SearchVideosAsync(_keyword, _sort);
+
+            // 响应回来时又发过一次新的搜索（关键词 / 排序已变）：这批旧结果直接作废
+            if (generation != _loadGeneration) return;
+
             _total = result.Total;
 
             foreach (var item in result.Items)
@@ -165,15 +181,20 @@ public sealed partial class SearchPage : Page
         }
         catch (Exception ex)
         {
+            if (generation != _loadGeneration) return;   // 旧请求的失败不再打扰当前加载
             _loadFailed = true;
             App.WriteLog("SearchPage.LoadAsync", ex);
             SearchState.ShowError($"搜索失败：{ex.Message}", actionText: "重试");
         }
         finally
         {
-            _loading = false;
-            SortBar.IsHitTestVisible = true;
-            UpdateResultSummary();
+            // 只有最新一代收尾：旧一代不能替新一代把加载态关掉
+            if (generation == _loadGeneration)
+            {
+                _loading = false;
+                SortBar.IsHitTestVisible = true;
+                UpdateResultSummary();
+            }
         }
     }
 
@@ -245,7 +266,7 @@ public sealed partial class SearchPage : Page
     private async void SearchState_ActionClick(object? sender, EventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_keyword)) return;
-        await LoadAsync();
+        await LoadAsync(_loadGeneration);
     }
 
     /// <summary>点结果卡片：在当前框架压入播放页（后退即回到这批结果）</summary>

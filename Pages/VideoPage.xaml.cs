@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using FFmpegInteropX;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 using AStation_Client.Controls;
@@ -59,6 +60,9 @@ public sealed partial class VideoPage : Page
     private bool _suppressCdnChange;
     private bool _ffmpegFallbackTried;
     private string? _currentUrl;
+
+    /// <summary>FFmpeg 兜底解码源。创建方持有引用，换源/离开页面时 Dispose（否则 native 上下文靠 GC 兜底）</summary>
+    private FFmpegMediaSource? _ffmpegSource;
     private bool _isBangumi;
     private string _resourceId = string.Empty;
     private string _currentVideoId = string.Empty;
@@ -74,6 +78,22 @@ public sealed partial class VideoPage : Page
     private bool _relatedLoaded;
     private bool _commentLoading;
     private string _commentCountText = string.Empty;
+
+    // ── 异步续体守卫：在途请求回来看代际变了就放弃写入，防旧响应顶掉新状态 ──
+    /// <summary>页面资源代际：进入新资源 +1，离开页面也 +1（离开后所有续体全部作废）</summary>
+    private int _navGeneration;
+
+    /// <summary>取流代际：每次 PlayCurrentAsync +1；快速连点选集 / 上下集时旧响应作废</summary>
+    private int _playGeneration;
+
+    /// <summary>弹幕加载代际：快速切集 / 换资源时旧弹幕响应作废，防混入当前列表</summary>
+    private int _danmakuGeneration;
+
+    /// <summary>评论代际：换资源 +1，在途评论响应作废</summary>
+    private int _commentGeneration;
+
+    /// <summary>当前在途评论请求所属代际（-1 = 无在途请求）</summary>
+    private int _commentLoadingGeneration = -1;
 
     /// <summary>清晰度 / 线路两个 Flyout 的列表实例（内容挂在共用播放器控件里）</summary>
     private ListView _qualityList = null!;
@@ -279,19 +299,29 @@ public sealed partial class VideoPage : Page
     {
         base.OnNavigatedTo(e);
 
-        switch (e.Parameter)
+        // async void：这里抛出去就是未观察异常，加载态会永远卡住。
+        // 内层各步已自带 try/catch，这层兜住将来新加代码漏掉的情况。
+        try
         {
-            case VideoNavArgs args when !string.IsNullOrWhiteSpace(args.ResourceId):
-                await LoadAsync(args.ResourceId, args.ResourceType, args.Title, args.VideoId, args.Mkey);
-                break;
+            switch (e.Parameter)
+            {
+                case VideoNavArgs args when !string.IsNullOrWhiteSpace(args.ResourceId):
+                    await LoadAsync(args.ResourceId, args.ResourceType, args.Title, args.VideoId, args.Mkey);
+                    break;
 
-            case string resourceId when !string.IsNullOrWhiteSpace(resourceId):
-                await LoadAsync(resourceId, 2, null, null, null);
-                break;
+                case string resourceId when !string.IsNullOrWhiteSpace(resourceId):
+                    await LoadAsync(resourceId, 2, null, null, null);
+                    break;
 
-            default:
-                Overlay.ShowStatus("没有可播放的内容", spinner: false);
-                break;
+                default:
+                    Overlay.ShowStatus("没有可播放的内容", spinner: false);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Overlay.ShowStatus($"加载失败：{ex.Message}", spinner: false);
+            RuntimeLog.Write("play", $"播放页加载失败：{ex}");
         }
     }
 
@@ -299,12 +329,22 @@ public sealed partial class VideoPage : Page
     {
         base.OnNavigatedFrom(e);
 
+        // 作废所有在途续体：取流 / 弹幕 / 评论响应回来后不得再动这个已离开的页面
+        //（否则 PlayCurrentAsync 会重新设 Source 起播、LoadDanmakuAsync 会重启弹幕计时器）
+        _navGeneration++;
+
         _danmakuTimer.Stop();
         Overlay.Danmaku.ClearAll();
 
         var mp = Overlay.MediaElement.MediaPlayer;
         mp?.Pause();
         Overlay.MediaElement.Source = null;
+
+        // 释放 FFmpeg 兜底解码源，并注销本地代理里这次的会话（清单 + 分片表立即回收）
+        _ffmpegSource?.Dispose();
+        _ffmpegSource = null;
+        LocalMediaProxy.Current.UnregisterHls(_currentUrl);
+        _currentUrl = null;
 
         // 离开页面时务必还原窗口呈现方式，否则会卡在全屏
         Overlay.ExitFullscreen();
@@ -314,6 +354,8 @@ public sealed partial class VideoPage : Page
 
     private async Task LoadAsync(string resourceId, int resourceType, string? title, string? videoId, string? mkey)
     {
+        int gen = ++_navGeneration;   // 新资源 = 新代际：上一次加载的在途响应全部作废
+
         _resourceId = resourceId;
         _isBangumi = resourceType == 1;
         _mkey = mkey;
@@ -329,6 +371,7 @@ public sealed partial class VideoPage : Page
         _commentPage = 0;
         _commentsLoaded = false;
         _relatedLoaded = false;
+        _commentGeneration++;   // 在途评论响应作废（换资源后不得再写入评论区）
         Comments.Clear();
         RelatedVideos.Clear();
         LoadMoreCommentButton.Visibility = Visibility.Collapsed;
@@ -354,10 +397,17 @@ public sealed partial class VideoPage : Page
         }
         catch (Exception ex)
         {
+            if (gen != _navGeneration) return;
             Overlay.ShowStatus($"读取页面信息失败：{ex.Message}", spinner: false);
         }
 
+        // 详情等回来时可能已经又换了资源 / 离开了页面：这轮加载就此打住
+        if (gen != _navGeneration) return;
+
         await PlayCurrentAsync();
+
+        if (gen != _navGeneration) return;
+
         UpdateEpisodeButtons();
 
         // 资源已定，登录态下查一次「我是否收藏过」，不阻塞播放
@@ -374,7 +424,11 @@ public sealed partial class VideoPage : Page
 
     private async Task LoadVideoInfoAsync(string dougaId, string? title)
     {
+        int gen = _navGeneration;
         var detail = await _videoDetail.GetVideoDetailAsync(dougaId);
+
+        // 等详情期间换了资源 / 离开页面：旧详情不再写 UI
+        if (gen != _navGeneration) return;
 
         if (detail is null)
         {
@@ -450,14 +504,20 @@ public sealed partial class VideoPage : Page
 
     private async Task LoadBangumiInfoAsync(string bangumiId, string? title)
     {
+        int gen = _navGeneration;
         var detail = await _bangumi.GetBangumiDetailAsync(bangumiId);
+
+        // 等详情期间换了资源 / 离开页面：旧详情不再写 UI、不再重试
+        if (gen != _navGeneration) return;
 
         // SSR 页面偶尔返回不完整（bangumiData 有、剧集数组缺失），重试一次再降级
         if (detail is not null && detail.Episodes.Count == 0)
         {
             RuntimeLog.Write("bangumi", $"aaaa{bangumiId} 首次未解析到剧集，重试");
             await Task.Delay(500);
+            if (gen != _navGeneration) return;
             detail = await _bangumi.GetBangumiDetailAsync(bangumiId) ?? detail;
+            if (gen != _navGeneration) return;
         }
 
         if (detail is null)
@@ -524,42 +584,63 @@ public sealed partial class VideoPage : Page
     /// <summary>取流并播放当前集/分P</summary>
     private async Task PlayCurrentAsync()
     {
+        int playGen = ++_playGeneration;
+        int navGen = _navGeneration;
+
         Overlay.ShowStatus("正在获取播放地址…");
 
         // 换集/换源时控制条回到初始态（否则会短暂显示上一集的进度）
         Overlay.ResetProgress();
         Overlay.ShowControls(restartTimer: false);
 
-        var response = await _play.GetPlayInfoAsync(
-            _resourceId,
-            _isBangumi ? 1 : 2,
-            string.IsNullOrWhiteSpace(_currentVideoId) ? null : _currentVideoId,
-            _mkey);
-
-        var stream = _play.BuildPlayResult(response, AppSettings.Current.PreferHevc);
-
-        if (!stream.HasStream)
+        try
         {
-            Overlay.ShowStatus(stream.ErrorMessage ?? "拿不到播放地址", spinner: false);
-            return;
+            var response = await _play.GetPlayInfoAsync(
+                _resourceId,
+                _isBangumi ? 1 : 2,
+                string.IsNullOrWhiteSpace(_currentVideoId) ? null : _currentVideoId,
+                _mkey);
+
+            // 等取流期间又点了一次切集 / 已离开页面：这次取流作废（新请求会接管播放器）
+            if (navGen != _navGeneration || playGen != _playGeneration) return;
+
+            var stream = _play.BuildPlayResult(response, AppSettings.Current.PreferHevc);
+
+            if (!stream.HasStream)
+            {
+                Overlay.ShowStatus(stream.ErrorMessage ?? "拿不到播放地址", spinner: false);
+                return;
+            }
+
+            _pendingResumeSeconds = stream.UserPlayedSeconds;
+            _resumeAfterSourceSwitch = false;
+
+            _suppressQualityChange = true;
+            _qualityList.ItemsSource = stream.Qualities;
+            _qualityList.SelectedIndex = ResolveQualityIndex(stream.Qualities);
+            _suppressQualityChange = false;
+
+            ApplyQuality(stream.Qualities[_qualityList.SelectedIndex]);
+
+            // 弹幕按「分P / 集」的 videoId 取，和版本无关
+            await LoadDanmakuAsync(_currentVideoId);
+
+            if (navGen != _navGeneration || playGen != _playGeneration) return;
+
+            // 切集后同步「当前 第N集」与控制层里的标题 / 集信息
+            RefreshEpisodeLabel();
+            UpdateOverlayInfo();
         }
-
-        _pendingResumeSeconds = stream.UserPlayedSeconds;
-        _resumeAfterSourceSwitch = false;
-
-        _suppressQualityChange = true;
-        _qualityList.ItemsSource = stream.Qualities;
-        _qualityList.SelectedIndex = ResolveQualityIndex(stream.Qualities);
-        _suppressQualityChange = false;
-
-        ApplyQuality(stream.Qualities[_qualityList.SelectedIndex]);
-
-        // 弹幕按「分P / 集」的 videoId 取，和版本无关
-        await LoadDanmakuAsync(_currentVideoId);
-
-        // 切集后同步「当前 第N集」与控制层里的标题 / 集信息
-        RefreshEpisodeLabel();
-        UpdateOverlayInfo();
+        catch (Exception ex)
+        {
+            // 取流 / 建代理 / 起播抛异常不能炸 async void 调用链；
+            // 旧一代的失败不覆盖状态（新请求会给出自己的提示）
+            if (navGen == _navGeneration && playGen == _playGeneration)
+            {
+                Overlay.ShowStatus($"取流失败：{ex.Message}", spinner: false);
+            }
+            RuntimeLog.Write("play", $"取流失败：{ex}");
+        }
     }
 
     private void UpdateBangumiMeta(string? episodeName)
@@ -644,6 +725,15 @@ public sealed partial class VideoPage : Page
                 : quality.Url;
         }
 
+        // 若上一轮用过 FFmpeg 兜底，先把旧解码源摘掉并释放（先摘再释放，native 句柄别挂在播放器上）
+        var oldFfSource = _ffmpegSource;
+        _ffmpegSource = null;
+        if (oldFfSource is not null)
+        {
+            Overlay.MediaElement.Source = null;
+            oldFfSource.Dispose();
+        }
+
         // AcFun 的 HLS 分片是相对路径、签名却挂在清单的 query 上，
         // 播放器解析相对路径会把 query 丢掉 → 分片全部 403。
         // 所以先过一遍本地代理，让它把分片重写成带签名的绝对地址。
@@ -674,7 +764,14 @@ public sealed partial class VideoPage : Page
 
         try
         {
-            Overlay.MediaElement.Source = await FFmpegPlayback.CreateAsync(_currentUrl, AppSettings.Current.LiveHardwareDecode);
+            var source = await FFmpegPlayback.CreateAsync(_currentUrl, AppSettings.Current.LiveHardwareDecode);
+
+            var old = _ffmpegSource;
+            _ffmpegSource = source;
+            Overlay.MediaElement.Source = null;   // 先摘掉失败/旧源，再释放旧的解码上下文
+            old?.Dispose();
+
+            Overlay.MediaElement.Source = source.CreateMediaPlaybackItem();
             Overlay.MediaElement.AutoPlay = true;
             Overlay.MediaElement.MediaPlayer?.Play();
 
@@ -886,8 +983,21 @@ public sealed partial class VideoPage : Page
             return;
         }
 
-        _favoriteState = await _favorite.IsFavoriteAsync(_resourceId, _isBangumi);
-        SetFavoriteVisual(_favoriteState == true, busy: false);
+        int gen = _navGeneration;
+        try
+        {
+            _favoriteState = await _favorite.IsFavoriteAsync(_resourceId, _isBangumi);
+
+            // 等结果期间换了资源：旧资源的收藏状态不写按钮
+            if (gen != _navGeneration) return;
+
+            SetFavoriteVisual(_favoriteState == true, busy: false);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Write("favorite", $"查询收藏状态失败：{ex.Message}");
+            if (gen == _navGeneration) SetFavoriteVisual(false, busy: false);
+        }
     }
 
     /// <summary>收藏按钮外观：已收藏金黄实心，未收藏灰；加载中降透明并禁点。</summary>
@@ -957,6 +1067,8 @@ public sealed partial class VideoPage : Page
 
     private async Task LoadDanmakuAsync(string? videoId)
     {
+        int gen = ++_danmakuGeneration;
+
         _danmakuTimer.Stop();
         _danmakus.Clear();
         _danmakuCursor = 0;
@@ -970,6 +1082,10 @@ public sealed partial class VideoPage : Page
         }
 
         var list = await _danmaku.GetClientDanmakusAsync(videoId);
+
+        // 等弹幕期间又切了一次集 / 换了资源：这批旧弹幕直接作废，不混进当前列表
+        if (gen != _danmakuGeneration) return;
+
         _danmakus.AddRange(list);
 
         RuntimeLog.Write(
@@ -1146,21 +1262,30 @@ public sealed partial class VideoPage : Page
 
     private async Task LoadCommentsAsync(bool append)
     {
-        // 懒加载的首次触发和「加载更多」可能撞在一起，加闸门避免两次请求交叉写入列表
-        if (_commentLoading) return;
+        // 同一代际的并发（懒加载首次触发和「加载更多」撞车）仍然拒绝；
+        // 换资源后旧请求还在路上时不再挡新请求（代际已变，旧响应反正会被作废）
+        if (_commentLoading && _commentLoadingGeneration == _commentGeneration) return;
+
+        int generation = _commentGeneration;
         _commentLoading = true;
+        _commentLoadingGeneration = generation;
 
         try
         {
-            await LoadCommentsCoreAsync(append);
+            await LoadCommentsCoreAsync(append, generation);
         }
         finally
         {
-            _commentLoading = false;
+            // 旧代际的收尾不能替新代际把闸门关掉
+            if (generation == _commentGeneration)
+            {
+                _commentLoading = false;
+                _commentLoadingGeneration = -1;
+            }
         }
     }
 
-    private async Task LoadCommentsCoreAsync(bool append)
+    private async Task LoadCommentsCoreAsync(bool append, int generation)
     {
         // 番剧的评论 sourceType 与视频不同，实测传 2 拿不到就退回 3 再试
         int sourceType = _isBangumi ? 2 : 3;
@@ -1179,9 +1304,13 @@ public sealed partial class VideoPage : Page
         int page = append ? _commentPage + 1 : 1;
         var result = await _comment.GetCommentsAsync(_resourceId, sourceType, page);
 
+        // 等响应期间换了资源：这批旧评论作废，不写入新资源的评论区
+        if (generation != _commentGeneration) return;
+
         if (result.Items.Count == 0 && _isBangumi && !append)
         {
             var retry = await _comment.GetCommentsAsync(_resourceId, 3, 1);
+            if (generation != _commentGeneration) return;
             if (retry.Items.Count > 0) result = retry;
         }
 
@@ -1272,13 +1401,30 @@ public sealed partial class VideoPage : Page
             return;
         }
 
-        var list = await _related.GetRelatedAsync(_channelId, excludeDougaId: _resourceId, max: 20);
+        int gen = _navGeneration;
+        try
+        {
+            var list = await _related.GetRelatedAsync(_channelId, excludeDougaId: _resourceId, max: 20);
 
-        RelatedVideos.Clear();
-        foreach (var item in list) RelatedVideos.Add(item);
+            // 等响应期间换了资源 / 离开页面：旧推荐不写入
+            if (gen != _navGeneration) return;
 
-        _relatedLoaded = true;
-        if (RelatedTab.IsChecked == true) SelectSideTab(1);
+            RelatedVideos.Clear();
+            foreach (var item in list) RelatedVideos.Add(item);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Write("related", $"相关视频加载失败：{ex.Message}");
+        }
+        finally
+        {
+            // 失败也算「已加载」：侧栏给空态，而不是永远停在「正在加载相关视频…」
+            if (gen == _navGeneration)
+            {
+                _relatedLoaded = true;
+                if (RelatedTab.IsChecked == true) SelectSideTab(1);
+            }
+        }
     }
 
     private async void RelatedList_ItemClick(object sender, ItemClickEventArgs e)

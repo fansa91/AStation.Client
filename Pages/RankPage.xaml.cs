@@ -23,6 +23,9 @@ public sealed partial class RankPage : Page
     private string _currentChannelName = "全站";
     private bool _channelsBuilt;
 
+    /// <summary>加载代际：快速切换周期 / 频道时旧响应作废，防交叉写入列表</summary>
+    private int _loadGeneration;
+
     public RankPage()
     {
         InitializeComponent();
@@ -131,6 +134,8 @@ public sealed partial class RankPage : Page
     /// </summary>
     private async Task LoadDataAsync()
     {
+        int generation = ++_loadGeneration;
+
         LoadingRing.IsActive = true;
         LoadingRing.Visibility = Visibility.Visible;
 
@@ -144,6 +149,7 @@ public sealed partial class RankPage : Page
             try
             {
                 var channels = await ServiceLocator.Rank.GetRankChannelsAsync();
+                if (generation != _loadGeneration) return;   // 期间已切了周期 / 频道：旧加载作废
                 if (channels.Count > 1)
                 {
                     BuildChannelChips(channels);
@@ -152,6 +158,7 @@ public sealed partial class RankPage : Page
             }
             catch
             {
+                if (generation != _loadGeneration) return;
                 // 拿不到频道列表就只保留「全站」（下面的兜底芯片）
             }
 
@@ -169,9 +176,13 @@ public sealed partial class RankPage : Page
         }
         catch (Exception ex)
         {
+            if (generation != _loadGeneration) return;
             // 网络异常：不再静默当空，交给状态面板说明并可重试
             error = ex.Message;
         }
+
+        // 旧响应不回写：新一轮加载会接管 LoadingRing 与列表
+        if (generation != _loadGeneration) return;
 
         Items.Clear();
         foreach (var entry in entries)

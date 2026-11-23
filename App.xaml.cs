@@ -17,8 +17,15 @@ public partial class App : Application
     /// </summary>
     public static MainWindow? MainWindowInstance { get; private set; }
 
-    private static readonly string LogPath =
-        Path.Combine(AppContext.BaseDirectory, "startup-error.log");
+    private static readonly string LogDirectory = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AStation.Client",
+        "logs");
+
+    private static readonly string LogPath = Path.Combine(LogDirectory, "app-errors.log");
+
+    /// <summary>单文件上限：超过就轮转一次（当前 → .old），不让日志无限长大</summary>
+    private const long LogRotateBytes = 2 * 1024 * 1024;
 
     public App()
     {
@@ -27,6 +34,10 @@ public partial class App : Application
 
         this.UnhandledException += (_, e) =>
         {
+            // XAML 树上的未处理异常：记录后继续运行。
+            // 不区分可恢复性——没有可靠判据；对播放器来说，
+            // 崩在后台请求的异常比带着日志继续跑更伤用户。
+            // 异步链上的异常已由各页/服务的 try/catch 兜住，走到这里的都是意外。
             WriteLog("Application.UnhandledException", e.Exception);
             e.Handled = true;
         };
@@ -65,6 +76,18 @@ public partial class App : Application
     {
         try
         {
+            // 日志放 %LOCALAPPDATA%\AStation.Client\logs：安装目录可能只读，
+            // 而且升级覆盖安装也不会把日志弄丢
+            Directory.CreateDirectory(LogDirectory);
+
+            var info = new FileInfo(LogPath);
+            if (info.Exists && info.Length > LogRotateBytes)
+            {
+                var oldPath = LogPath + ".old";
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+                File.Move(LogPath, oldPath);
+            }
+
             var sb = new StringBuilder();
             sb.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {stage}");
             if (ex is not null)

@@ -1,6 +1,8 @@
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
@@ -13,30 +15,36 @@ namespace AStation_Client.Controls;
 /// <summary>
 /// 弹幕渲染面板。
 ///
-/// 运动由面板自己的定时器逐帧推进（不用 Storyboard）：
-/// WinUI 3 里用 Storyboard 去动画 <c>TranslateTransform.X</c> 并不可靠 ——
-/// 实测动画不会真正插值，Completed 会立刻触发，元素还没画出来就被移除了。
-/// 自己算 x 反而更稳，也方便做「按轨道避重叠」和暂停 / 变速。
+/// 运动全部交给合成器（Composition）：每条弹幕进场时就算好起止 X 与时长，
+/// 用 ScalarKeyFrameAnimation 让合成线程逐帧推进，UI 线程零每帧工作
+///（原来 16ms DispatcherTimer 每帧对每条弹幕写 TranslateTransform.X，N 条弹幕 = N 次渲染失效）。
+/// 面板上只剩一个 250ms 的低频清理定时器，负责移除跑完 / 到寿的弹幕。
+///
+/// 为什么不用 Storyboard：WinUI 3 里用 Storyboard 去动画 TranslateTransform 并不可靠
+///（实测不插值、Completed 立即触发）；Visual 层动画不受此限制。
 /// </summary>
 public sealed partial class DanmakuPanel : UserControl
 {
     private readonly List<ActiveDanmaku> _active = new();
-    private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(16) };
+    private readonly DispatcherTimer _cleanupTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly Stopwatch _clock = new();
 
     /// <summary>顶部安全区高度（播放器右上角有清晰度 / 弹幕开关）</summary>
     private const double TopSafeInset = 48;
 
+    /// <summary>固定弹幕（顶部 / 底部）停留与淡出时长</summary>
+    private const double FixedLifeSeconds = 3.2;
+    private const double FixedFadeSeconds = 0.8;
+
     private int _nextLane;
     private double _opacity = 0.9;
     private bool _sizeLogged;
-    private TimeSpan _lastTick;
 
     public DanmakuPanel()
     {
         InitializeComponent();
-        _timer.Tick += OnTimerTick;
-        Unloaded += (_, _) => _timer.Stop();
+        _cleanupTimer.Tick += OnCleanupTick;
+        Unloaded += (_, _) => _cleanupTimer.Stop();
     }
 
     /// <summary>弹幕横穿屏幕所需秒数（越小越快）</summary>
@@ -95,45 +103,73 @@ public sealed partial class DanmakuPanel : UserControl
         int laneCount = Math.Max(1, (int)(usableHeight / laneHeight));
         int lane = _nextLane++ % laneCount;
 
-        var transform = new TranslateTransform();
-        element.RenderTransform = transform;
+        bool isFixed = mode is DanmakuMode.Top or DanmakuMode.Bottom;
 
-        var entry = new ActiveDanmaku
-        {
-            Element = element,
-            Transform = transform,
-            Width = textWidth,
-            IsFixed = mode is DanmakuMode.Top or DanmakuMode.Bottom,
-            Mode = mode
-        };
+        double startX;
+        double endX = 0;
+        double durationSeconds = 0;
 
-        if (entry.IsFixed)
+        if (isFixed)
         {
             double y = mode == DanmakuMode.Top
                 ? topInset + 8 + lane * laneHeight
                 : Math.Max(topInset + 8, canvasHeight - 8 - (lane + 1) * laneHeight);
 
             Canvas.SetTop(element, y);
-            entry.X = Math.Max(0, (canvasWidth - textWidth) / 2);
-            entry.LifeLeft = 3.2;
-            transform.X = entry.X;
+
+            // 固定弹幕不动：位置用 RenderTransform 一次定位（不走动画，也就没有每帧成本）
+            startX = Math.Max(0, (canvasWidth - textWidth) / 2);
+            element.RenderTransform = new TranslateTransform { X = startX };
         }
         else
         {
             Canvas.SetTop(element, topInset + 8 + lane * laneHeight);
 
-            // 从右边缘外开始，完整穿出左边缘结束
-            entry.X = canvasWidth + 8;
-            entry.EndX = -textWidth - 24;
-            entry.Speed = Math.Max(20, (entry.X - entry.EndX) / Math.Clamp(SpeedSeconds, 3, 30));
-            transform.X = entry.X;
+            // 从右边缘外开始，完整穿出左边缘结束（与旧实现同一条速度曲线）
+            startX = canvasWidth + 8;
+            endX = -textWidth - 24;
+
+            double distance = startX - endX;
+            double speed = Math.Max(20, distance / Math.Clamp(SpeedSeconds, 3, 30));
+            durationSeconds = distance / speed;
         }
 
         Canvas.SetLeft(element, 0);
         DanmakuCanvas.Children.Add(element);
-        _active.Add(entry);
 
-        EnsureTicking();
+        // 进可视树之后再取 Visual，把运动挂给合成线程
+        var visual = ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+
+        var entry = new ActiveDanmaku
+        {
+            Element = element,
+            Visual = visual,
+            IsFixed = isFixed,
+            ExpiresAt = Now() + (isFixed ? FixedLifeSeconds : durationSeconds)
+        };
+
+        if (isFixed)
+        {
+            // 停留期末尾 0.8 秒淡出（延迟与时长都在合成器上，UI 线程不参与）
+            var fade = compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 1f);
+            fade.InsertKeyFrame(1f, 0f);
+            fade.DelayTime = TimeSpan.FromSeconds(FixedLifeSeconds - FixedFadeSeconds);
+            fade.Duration = TimeSpan.FromSeconds(FixedFadeSeconds);
+            visual.StartAnimation("Opacity", fade);
+        }
+        else
+        {
+            var slide = compositor.CreateScalarKeyFrameAnimation();
+            slide.InsertKeyFrame(0f, (float)startX);
+            slide.InsertKeyFrame(1f, (float)endX);
+            slide.Duration = TimeSpan.FromSeconds(durationSeconds);
+            visual.StartAnimation("Offset.X", slide);
+        }
+
+        _active.Add(entry);
+        EnsureCleaning();
     }
 
     /// <summary>
@@ -202,55 +238,45 @@ public sealed partial class DanmakuPanel : UserControl
         return rich;
     }
 
-    private void EnsureTicking()
+    /// <summary>面板时钟（秒）。首次取用时启动，供 ExpiresAt 计算</summary>
+    private double Now()
     {
-        if (_timer.IsEnabled) return;
-
-        _clock.Restart();
-        _lastTick = TimeSpan.Zero;
-        _timer.Start();
+        if (!_clock.IsRunning) _clock.Start();
+        return _clock.Elapsed.TotalSeconds;
     }
 
-    private void OnTimerTick(object? sender, object e)
+    private void EnsureCleaning()
     {
-        var now = _clock.Elapsed;
-        double delta = Math.Clamp((now - _lastTick).TotalSeconds, 0, 0.25);
-        _lastTick = now;
+        Now();
 
+        if (_cleanupTimer.IsEnabled) return;
+        _cleanupTimer.Start();
+    }
+
+    private void OnCleanupTick(object? sender, object e)
+    {
         if (_active.Count == 0)
         {
-            _timer.Stop();
+            _cleanupTimer.Stop();
             return;
         }
 
+        double now = _clock.Elapsed.TotalSeconds;
+
+        // 只做簿记：移除跑完 / 到寿的弹幕。运动与淡出都在合成线程，这里没有逐帧渲染工作
         for (int i = _active.Count - 1; i >= 0; i--)
         {
-            var entry = _active[i];
-
-            if (entry.IsFixed)
-            {
-                entry.LifeLeft -= delta;
-
-                // 最后 0.8 秒淡出
-                if (entry.LifeLeft < 0.8)
-                {
-                    entry.Element.Opacity = Math.Max(0, entry.LifeLeft / 0.8);
-                }
-
-                if (entry.LifeLeft <= 0) RemoveAt(i);
-                continue;
-            }
-
-            entry.X -= entry.Speed * delta;
-            entry.Transform.X = entry.X;
-
-            if (entry.X <= entry.EndX) RemoveAt(i);
+            if (_active[i].ExpiresAt > now) continue;
+            RemoveAt(i);
         }
     }
 
     private void RemoveAt(int index)
     {
         var entry = _active[index];
+
+        entry.Visual.StopAnimation("Offset.X");
+        entry.Visual.StopAnimation("Opacity");
 
         if (DanmakuCanvas.Children.Contains(entry.Element))
         {
@@ -263,10 +289,17 @@ public sealed partial class DanmakuPanel : UserControl
     /// <summary>清空所有弹幕</summary>
     public void ClearAll()
     {
+        foreach (var entry in _active)
+        {
+            entry.Visual.StopAnimation("Offset.X");
+            entry.Visual.StopAnimation("Opacity");
+        }
+
         _active.Clear();
         DanmakuCanvas.Children.Clear();
         _nextLane = 0;
-        _timer.Stop();
+        _cleanupTimer.Stop();
+        _clock.Reset();
     }
 
     private static Brush ParseColor(string? color)
@@ -308,25 +341,13 @@ public sealed partial class DanmakuPanel : UserControl
     private sealed class ActiveDanmaku
     {
         public FrameworkElement Element { get; set; } = null!;
-        public TranslateTransform Transform { get; set; } = null!;
 
-        /// <summary>当前 X 偏移</summary>
-        public double X { get; set; }
-
-        /// <summary>滚动弹幕的终点 X</summary>
-        public double EndX { get; set; }
-
-        /// <summary>滚动速度（像素 / 秒）</summary>
-        public double Speed { get; set; }
-
-        /// <summary>文本宽度</summary>
-        public double Width { get; set; }
-
-        /// <summary>固定弹幕剩余显示秒数</summary>
-        public double LifeLeft { get; set; }
+        /// <summary>元素的合成 Visual（运动 / 淡出动画挂在它上面）</summary>
+        public Visual Visual { get; set; } = null!;
 
         public bool IsFixed { get; set; }
 
-        public DanmakuMode Mode { get; set; }
+        /// <summary>移除时刻（面板时钟，秒）：滚动弹幕 = 进场 + 穿屏时长；固定弹幕 = 进场 + 停留时长</summary>
+        public double ExpiresAt { get; set; }
     }
 }

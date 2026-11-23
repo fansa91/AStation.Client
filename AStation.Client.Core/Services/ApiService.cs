@@ -71,8 +71,7 @@ public class ApiService : IDisposable
     public async Task<T?> GetAsync<T>(string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
     }
 
     /// <summary>
@@ -81,12 +80,7 @@ public class ApiService : IDisposable
     public async Task<T?> PostFormAsync<T>(string path, Dictionary<string, string> formData, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData), ct);
     }
 
     /// <summary>
@@ -96,12 +90,7 @@ public class ApiService : IDisposable
     public async Task<T?> PostFormAsync<T>(string path, IEnumerable<KeyValuePair<string, string>> formData, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData), ct);
     }
 
     /// <summary>
@@ -110,8 +99,7 @@ public class ApiService : IDisposable
     public async Task<string?> GetStringAsync(string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var response = await SendCoreAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(ct);
     }
@@ -122,8 +110,7 @@ public class ApiService : IDisposable
     public async Task<T?> GetLiveAsync<T>(string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)
     {
         var url = BuildUrl(LiveHost, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
     }
 
     /// <summary>
@@ -132,8 +119,7 @@ public class ApiService : IDisposable
     public async Task<T?> GetIdAsync<T>(string path, CancellationToken ct = default)
     {
         var url = BuildUrl(IdHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
     }
 
     /// 账号密码登录（独立域名 id.app.acfun.cn）
@@ -141,12 +127,7 @@ public class ApiService : IDisposable
     public async Task<T?> PostIdAsync<T>(string path, Dictionary<string, string> formData, CancellationToken ct = default)
     {
         var url = BuildUrl(IdHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData), ct);
     }
 
     /// <summary>
@@ -155,8 +136,7 @@ public class ApiService : IDisposable
     public async Task<T?> GetScanAsync<T>(string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)
     {
         var url = BuildUrl(ScanHost, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
     }
 
     /// <summary>
@@ -165,8 +145,7 @@ public class ApiService : IDisposable
     public async Task<string?> GetStringFromHostAsync(string host, string path, Dictionary<string, string>? queryParams = null, CancellationToken ct = default)
     {
         var url = BuildUrl(host, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var response = await SendCoreAsync(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync(ct);
     }
@@ -182,13 +161,7 @@ public class ApiService : IDisposable
         CancellationToken ct = default)
     {
         var url = BuildUrl(host, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        request.Headers.Referrer = new Uri(host);
-        return await SendAsync<T>(request, ct);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData, referer: host), ct);
     }
 
     /// <summary>
@@ -343,12 +316,7 @@ public class ApiService : IDisposable
     public async Task<T?> PostFormAllowErrorAsync<T>(string path, Dictionary<string, string> formData, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        return await SendAsync<T>(request, ct, ensureSuccess: false);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData), ct, ensureSuccess: false);
     }
 
     /// <summary>
@@ -359,12 +327,7 @@ public class ApiService : IDisposable
     public async Task<T?> PostFormAllowErrorAsync<T>(string path, IEnumerable<KeyValuePair<string, string>> formData, CancellationToken ct = default)
     {
         var url = BuildUrl(BaseHost, path);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        return await SendAsync<T>(request, ct, ensureSuccess: false);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData), ct, ensureSuccess: false);
     }
 
     /// <summary>
@@ -380,22 +343,76 @@ public class ApiService : IDisposable
         CancellationToken ct = default)
     {
         var url = BuildUrl(host, path, queryParams);
-        using var request = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = new FormUrlEncodedContent(formData)
-        };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
-        request.Headers.Referrer = new Uri(BaseHost);
-        return await SendAsync<T>(request, ct, ensureSuccess: false);
+        return await SendAsync<T>(() => BuildFormRequest(url, formData, referer: BaseHost), ct, ensureSuccess: false);
     }
 
-    private async Task<T?> SendAsync<T>(HttpRequestMessage request, CancellationToken ct, bool ensureSuccess = true)
+    private async Task<T?> SendAsync<T>(Func<HttpRequestMessage> requestFactory, CancellationToken ct, bool ensureSuccess = true)
     {
-        using var response = await _httpClient.SendAsync(request, ct);
+        using var response = await SendCoreAsync(requestFactory, ct);
         if (ensureSuccess) response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(ct);
         if (string.IsNullOrWhiteSpace(json)) return default;
         return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+    }
+
+    /// <summary>
+    /// 发送 + 瞬时故障重试。
+    ///
+    /// 只重试「请求很可能根本没被处理」的情形：
+    ///   · 网络级异常（连接失败 / 被重置 / HttpClient 超时）；
+    ///   · 5xx 网关错误与 408。
+    /// 4xx 是业务应答（未登录 401、参数错 21 等），原样返回，绝不重试。
+    /// 重试必须重建请求（HttpRequestMessage 及其 Content 不可复用），所以入参是工厂。
+    /// </summary>
+    private async Task<HttpResponseMessage> SendCoreAsync(Func<HttpRequestMessage> requestFactory, CancellationToken ct)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            using var request = requestFactory();
+
+            try
+            {
+                var response = await _httpClient.SendAsync(request, ct);
+
+                if (attempt < MaxSendAttempts && IsRetryableStatus(response.StatusCode))
+                {
+                    response.Dispose();
+                    await Task.Delay(BackoffDelay(attempt), ct);
+                    continue;
+                }
+
+                return response;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested && attempt < MaxSendAttempts && IsTransientNetworkError(ex))
+            {
+                await Task.Delay(BackoffDelay(attempt), ct);
+            }
+        }
+    }
+
+    /// <summary>瞬时故障重试上限（首试 + 1 次重试）</summary>
+    private const int MaxSendAttempts = 2;
+
+    private static bool IsRetryableStatus(HttpStatusCode statusCode) =>
+        statusCode >= HttpStatusCode.InternalServerError || statusCode == HttpStatusCode.RequestTimeout;
+
+    /// <summary>网络级瞬时故障：连接失败 / 被重置；HttpClient 超时表现为内层 TimeoutException 的 TaskCanceledException</summary>
+    private static bool IsTransientNetworkError(Exception ex) =>
+        ex is HttpRequestException
+        || (ex is TaskCanceledException tce && tce.InnerException is TimeoutException);
+
+    private static TimeSpan BackoffDelay(int attempt) => TimeSpan.FromMilliseconds(500 * attempt);
+
+    /// <summary>构造表单 POST 请求（重试时由工厂重新调用，Content 每次新建）</summary>
+    private static HttpRequestMessage BuildFormRequest(string url, IEnumerable<KeyValuePair<string, string>> formData, string? referer = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new FormUrlEncodedContent(formData)
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+        if (referer is not null) request.Headers.Referrer = new Uri(referer);
+        return request;
     }
 
     public void Dispose()

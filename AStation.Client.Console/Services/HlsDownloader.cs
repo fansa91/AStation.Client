@@ -4,18 +4,30 @@ using System.Text.RegularExpressions;
 namespace AStation_Client.Cli.Services;
 
 /// <summary>
-/// 极简 HLS 下载器：把 m3u8 的分片按顺序抓下来拼成一个 .ts。
+/// 极简 HLS 下载器：把 m3u8 的分片并发抓下来（限流 + 重试 + 单请求超时 + 断点续传），
+/// 按序拼成一个 .ts。
 ///
-/// 两个必须处理对的点：
+/// 必须处理对的几个点：
 ///   1. AcFun 的分片写的是相对路径，而签名参数（sign / t / us）挂在清单自己的 query 上，
 ///      按 RFC 解析相对路径会把 query 丢掉 → 分片 403。这里解析后手动把清单的 query 补回去。
 ///   2. 清单可能带 EXT-X-KEY（AES-128），要根据 EXT-X-IV 或分片序号解一段。
+///   3. 分片先落到「输出文件名 + .parts」目录（解密后的完整分片），全部就绪后再按序拼接成最终文件；
+///      中途失败 / Ctrl+C 时目录保留，下次运行接着下（续传），输出不会留下半截文件。
 /// </summary>
 public sealed class HlsDownloader
 {
     private const string UserAgent =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
         "Chrome/126.0.0.0 Safari/537.36";
+
+    /// <summary>分片并发抓取数</summary>
+    private const int Concurrency = 4;
+
+    /// <summary>单个请求的总超时（连接 + 响应头 + 读完内容都在内）</summary>
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>每个分片的最大尝试次数（首试 + 重试，指数退避）</summary>
+    private const int MaxAttempts = 3;
 
     private readonly HttpClient _http;
 
@@ -63,42 +75,143 @@ public sealed class HlsDownloader
         byte[]? key = null;
         if (parsed.KeyUri is not null)
         {
-            key = await _http.GetByteArrayAsync(parsed.KeyUri, ct);
+            key = await FetchBytesWithRetryAsync(parsed.KeyUri, ct);
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
 
-        long totalBytes = 0;
-        await using (var file = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+        // 分片先落到「输出文件名 + .parts」目录（解密后的完整分片，写 .tmp 再改名保证不会出现半截），
+        // 已存在的分片直接复用 —— 断点续传就靠它。全部就绪后再按序拼成最终文件，
+        // 所以中途失败 / Ctrl+C 时输出不会是残缺的，下次运行还能接着下。
+        var partsDir = outputPath + ".parts";
+        Directory.CreateDirectory(partsDir);
+
+        int total = parsed.Segments.Count;
+        var tasks = new List<Task>(total + 1);
+        var completed = 0;
+
+        var gate = new SemaphoreSlim(Concurrency, Concurrency);
+
+        // fMP4 的初始化段（AcFun 的 TS 清单里没有，留着以防清单格式变化）
+        if (parsed.InitSegment is not null)
         {
-            // fMP4 的初始化段（AcFun 的 TS 清单里没有，留着以防清单格式变化）
-            if (parsed.InitSegment is not null)
+            var initPath = Path.Combine(partsDir, "init");
+            if (!File.Exists(initPath))
             {
-                var init = await FetchBytesAsync(parsed.InitSegment, ct);
-                await file.WriteAsync(init, ct);
-                totalBytes += init.Length;
-            }
-
-            for (int i = 0; i < parsed.Segments.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                var data = await FetchBytesAsync(parsed.Segments[i], ct);
-
-                if (key is not null)
-                {
-                    var iv = parsed.Iv ?? SequenceIv(i);
-                    data = Decrypt(data, key, iv);
-                }
-
-                await file.WriteAsync(data, ct);
-                totalBytes += data.Length;
-
-                progress?.Report((i + 1) / (double)parsed.Segments.Count);
+                tasks.Add(FetchSegmentToFileAsync(gate, parsed.InitSegment, initPath, key: null, playlistIv: null, segmentIndex: 0, ct));
             }
         }
 
-        return new Result(parsed.Segments.Count, totalBytes, outputPath);
+        for (int i = 0; i < total; i++)
+        {
+            var index = i;
+            tasks.Add(Task.Run(async () =>
+            {
+                var partPath = Path.Combine(partsDir, $"{index:D6}.ts");
+
+                if (File.Exists(partPath))
+                {
+                    // 续传：上一轮已经拿到的分片直接复用
+                    progress?.Report(Interlocked.Increment(ref completed) / (double)total);
+                    return;
+                }
+
+                await FetchSegmentToFileAsync(gate, parsed.Segments[index], partPath, key, parsed.Iv, index, ct);
+
+                progress?.Report(Interlocked.Increment(ref completed) / (double)total);
+            }, ct));
+        }
+
+        await Task.WhenAll(tasks);
+
+        long totalBytes = 0;
+        await using (var file = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
+        {
+            var initPath = Path.Combine(partsDir, "init");
+            if (File.Exists(initPath))
+            {
+                totalBytes += await CopyFileToAsync(initPath, file, ct);
+            }
+
+            for (int i = 0; i < total; i++)
+            {
+                totalBytes += await CopyFileToAsync(Path.Combine(partsDir, $"{i:D6}.ts"), file, ct);
+            }
+        }
+
+        Directory.Delete(partsDir, recursive: true);
+
+        return new Result(total, totalBytes, outputPath);
+    }
+
+    /// <summary>限流抓一个分片：重试 + 指数退避 + 解密 + .tmp→改名原子落盘</summary>
+    private async Task FetchSegmentToFileAsync(
+        SemaphoreSlim gate,
+        string url,
+        string targetPath,
+        byte[]? key,
+        byte[]? playlistIv,
+        int segmentIndex,
+        CancellationToken ct)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            await gate.WaitAsync(ct);
+            try
+            {
+                var data = await FetchBytesAsync(url, ct);
+
+                if (key is not null)
+                {
+                    var iv = playlistIv ?? SequenceIv(segmentIndex);
+                    data = Decrypt(data, key, iv);
+                }
+
+                var tmpPath = targetPath + ".tmp";
+                await File.WriteAllBytesAsync(tmpPath, data, ct);
+                File.Move(tmpPath, targetPath, overwrite: true);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch when (attempt < MaxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(0.5 * Math.Pow(2, attempt - 1)), ct);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+    }
+
+    /// <summary>带重试与退避的字节抓取（密钥等小资源用）</summary>
+    private async Task<byte[]> FetchBytesWithRetryAsync(string url, CancellationToken ct)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await FetchBytesAsync(url, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch when (attempt < MaxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(0.5 * Math.Pow(2, attempt - 1)), ct);
+            }
+        }
+    }
+
+    private static async Task<long> CopyFileToAsync(string path, FileStream target, CancellationToken ct)
+    {
+        await using var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
+        await source.CopyToAsync(target, ct);
+        return source.Length;
     }
 
     // ───────────────────────────── 清单解析 ─────────────────────────────
@@ -262,16 +375,24 @@ public sealed class HlsDownloader
 
     private async Task<string> FetchTextAsync(string url, CancellationToken ct)
     {
-        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        // HttpClient.Timeout 是 Infinite：给每个请求挂一个总超时（连接 + 头 + 读完），
+        // 否则 CDN 半死不活时单连接会永久挂起
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(RequestTimeout);
+
+        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(ct);
+        return await response.Content.ReadAsStringAsync(timeout.Token);
     }
 
     private async Task<byte[]> FetchBytesAsync(string url, CancellationToken ct)
     {
-        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(RequestTimeout);
+
+        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsByteArrayAsync(ct);
+        return await response.Content.ReadAsByteArrayAsync(timeout.Token);
     }
 
     /// <summary>给日志用的短地址</summary>

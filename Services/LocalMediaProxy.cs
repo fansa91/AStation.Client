@@ -57,6 +57,16 @@ public sealed class LocalMediaProxy : IDisposable
 
     private readonly ConcurrentDictionary<string, HlsSession> _playlists = new();
     private readonly ConcurrentDictionary<string, string> _rawResources = new();
+
+    // 会话回收：切一次清晰度/线路/集就会注册一个新会话，不回收的话清单全文与分片表只增不减。
+    // 上限取「当前会话 + 最近几次切换的余量」；超过上限时按创建顺序淘汰最老的。
+    private const int MaxPlaylistSessions = 4;
+    private const int MaxRawResources = 32;
+
+    /// <summary>会话 / 资源的创建顺序（淘汰用），与 _gate 同锁保护</summary>
+    private readonly List<string> _playlistOrder = new();
+    private readonly List<string> _rawOrder = new();
+
     private readonly object _gate = new();
 
     private TcpListener? _listener;
@@ -79,7 +89,47 @@ public sealed class LocalMediaProxy : IDisposable
         var token = Guid.NewGuid().ToString("N");
         _playlists[token] = new HlsSession { SourceUrl = m3u8Url };
 
+        lock (_gate)
+        {
+            _playlistOrder.Add(token);
+            while (_playlistOrder.Count > MaxPlaylistSessions && _playlists.Count > 1)
+            {
+                var oldest = _playlistOrder[0];
+                _playlistOrder.RemoveAt(0);
+                _playlists.TryRemove(oldest, out _);
+            }
+        }
+
         return $"http://127.0.0.1:{_port}/hls/{token}.m3u8";
+    }
+
+    /// <summary>
+    /// 注销一个 HLS 会话（页面离开播放页时调用，立即释放清单与分片表）。
+    /// 传入 <see cref="RegisterHls"/> 返回的本地地址；不认识或已注销时静默返回。
+    /// </summary>
+    public void UnregisterHls(string? localUrl)
+    {
+        if (string.IsNullOrWhiteSpace(localUrl)) return;
+
+        const string marker = "/hls/";
+        int start = localUrl.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0) return;
+        start += marker.Length;
+
+        int end = localUrl.IndexOf('.', start);          // .m3u8
+        if (end < 0) end = localUrl.IndexOf('/', start); // 保守兜底
+        if (end < 0) end = localUrl.Length;
+
+        var token = localUrl[start..end];
+        if (token.Length == 0) return;
+
+        if (_playlists.TryRemove(token, out _))
+        {
+            lock (_gate)
+            {
+                _playlistOrder.Remove(token);
+            }
+        }
     }
 
     /// <summary>把任意地址挂到代理后面透传。</summary>
@@ -87,10 +137,29 @@ public sealed class LocalMediaProxy : IDisposable
     {
         EnsureStarted();
 
+        var token = TrackRawResource(url);
+
+        return $"http://127.0.0.1:{_port}/raw/{token}";
+    }
+
+    /// <summary>登记一条透传资源并做数量上限淘汰（RewriteTagUri 的 KEY/MAP 也走这里）</summary>
+    private string TrackRawResource(string url)
+    {
         var token = Guid.NewGuid().ToString("N");
         _rawResources[token] = url;
 
-        return $"http://127.0.0.1:{_port}/raw/{token}";
+        lock (_gate)
+        {
+            _rawOrder.Add(token);
+            while (_rawOrder.Count > MaxRawResources && _rawResources.Count > 1)
+            {
+                var oldest = _rawOrder[0];
+                _rawOrder.RemoveAt(0);
+                _rawResources.TryRemove(oldest, out _);
+            }
+        }
+
+        return token;
     }
 
     // ───────────────────────────── 服务端 ─────────────────────────────
@@ -320,8 +389,7 @@ public sealed class LocalMediaProxy : IDisposable
         var uri = tag[valueStart..valueEnd];
         if (uri.Length == 0) return tag;
 
-        var token = Guid.NewGuid().ToString("N");
-        _rawResources[token] = ResolveWithQuery(baseUri, uri);
+        var token = TrackRawResource(ResolveWithQuery(baseUri, uri));
 
         return string.Concat(
             tag[..valueStart],

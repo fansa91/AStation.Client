@@ -41,15 +41,9 @@ public class LiveService
         var filters = $"[{{\"filterType\":1,\"filterId\":{filterId}}}]";
         var query = new Dictionary<string, string> { ["filters"] = filters };
 
-        string? json;
-        try
-        {
-            json = await _api.GetStringFromHostAsync(ApiService.LiveSiteHost, "/api/channel/list", query, ct);
-        }
-        catch
-        {
-            return new LiveChannelResult();
-        }
+        // 网络异常直接向上抛：页面有「接口失败 → SSR 兜底 → 都失败出错误态」的既有链路，
+        // 这里吞掉会让页面的 catch 永远走不到（死代码），错误被伪装成空列表
+        string? json = await _api.GetStringFromHostAsync(ApiService.LiveSiteHost, "/api/channel/list", query, ct);
 
         if (string.IsNullOrWhiteSpace(json)) return new LiveChannelResult();
 
@@ -148,15 +142,8 @@ public class LiveService
     {
         var result = new List<LiveItem>();
 
-        string? html;
-        try
-        {
-            html = await _api.GetStringFromHostAsync(ApiService.LiveSiteHost, "/", ct: ct);
-        }
-        catch
-        {
-            return result;
-        }
+        // 同上：抛给页面记录错误并展示错误态（这是兜底链路的最后一环）
+        string? html = await _api.GetStringFromHostAsync(ApiService.LiveSiteHost, "/", ct: ct);
 
         if (string.IsNullOrEmpty(html)) return result;
 

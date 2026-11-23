@@ -53,6 +53,13 @@ public sealed class LiveDanmakuService : IDisposable
 
     private readonly ApiService _api;
     private readonly HashSet<string> _seen = new();
+
+    /// <summary>保护 _client 换人与 Stop / 握手续体之间的竞态；Monitor 可重入，嵌套获取安全</summary>
+    private readonly object _sync = new();
+
+    /// <summary>连接代际：Start / Stop 都会 +1，旧握手与重连的续体回来看代际变了就放弃</summary>
+    private int _generation;
+
     private Client? _client;
     private long _authorId;
     private int _retry;
@@ -83,19 +90,27 @@ public sealed class LiveDanmakuService : IDisposable
     public void Start(long authorId)
     {
         if (_disposed || authorId <= 0) return;
-        if (_client is not null && _authorId == authorId && _client.IsRunning) return;
+
+        lock (_sync)
+        {
+            if (_client is not null && _authorId == authorId && _client.IsRunning) return;
+        }
 
         Stop(notify: false);
 
-        _authorId = authorId;
-        _retry = 0;
-        _stopping = false;
+        lock (_sync)
+        {
+            _authorId = authorId;
+            _retry = 0;
+            _stopping = false;
+            _generation++;   // 新会话代际：上一次会话的在途握手 / 重连全部作废
+        }
 
         // 内部是 async void 接收循环，这里不 await；失败会走 OnEnd 重连
-        _ = ConnectAsync(authorId);
+        _ = ConnectAsync(authorId, _generation);
     }
 
-    private async Task ConnectAsync(long authorId)
+    private async Task ConnectAsync(long authorId, int generation)
     {
         try
         {
@@ -104,7 +119,8 @@ public sealed class LiveDanmakuService : IDisposable
             var prepared = await PrepareAsync(authorId);
             if (prepared is null)
             {
-                StatusChanged?.Invoke(this, LiveDanmakuStatus.Failed);
+                // 只有仍是当前代际才报失败：被 Stop / 换房打断的旧尝试不该再出声
+                if (IsCurrent(generation)) StatusChanged?.Invoke(this, LiveDanmakuStatus.Failed);
                 return;
             }
 
@@ -119,19 +135,29 @@ public sealed class LiveDanmakuService : IDisposable
                 Log("无法固定 HostId（库版本变了？），弹幕连接可能失败");
             }
 
-            client.Handler += OnHandler;
-            client.OnStart += OnClientStart;
-            client.OnEnd += OnClientEnd;
-            _client = client;
+            lock (_sync)
+            {
+                // 握手期间可能已经 Stop / 重新 Start：旧代际的连接直接丢弃。
+                // 否则它会覆盖 _client（把真正的新连接顶掉），两个 socket 同时活着、弹幕重复
+                if (!IsCurrent(generation)) return;
+
+                client.Handler += OnHandler;
+                client.OnStart += OnClientStart;
+                client.OnEnd += OnClientEnd;
+                _client = client;
+            }
 
             client.Start(authorId);
         }
         catch (Exception ex)
         {
             Log($"启动弹幕连接失败：{ex.Message}");
-            StatusChanged?.Invoke(this, LiveDanmakuStatus.Failed);
+            if (IsCurrent(generation)) StatusChanged?.Invoke(this, LiveDanmakuStatus.Failed);
         }
     }
+
+    /// <summary>该代际是否仍是当前会话（未被 Stop / 重新 Start 打断）</summary>
+    private bool IsCurrent(int generation) => !_stopping && !_disposed && generation == _generation;
 
     /// <summary>
     /// 取访客令牌 + 进房票据。返回 null 表示这条链路不通（直播结束 / 接口变动）。
@@ -282,16 +308,38 @@ public sealed class LiveDanmakuService : IDisposable
     {
         if (_stopping || _disposed) return;
 
-        if (_retry < MaxRetry)
+        int generation = _generation;
+        int retry;
+        lock (_sync)
         {
-            _retry++;
-            Log($"弹幕连接断开，第 {_retry} 次重连");
-            _ = ConnectAsync(_authorId);
+            retry = ++_retry;
+        }
+
+        if (retry > MaxRetry)
+        {
+            Log("弹幕连接多次重试仍失败（直播可能已结束）");
+            StatusChanged?.Invoke(this, LiveDanmakuStatus.Closed);
             return;
         }
 
-        Log("弹幕连接多次重试仍失败（直播可能已结束）");
-        StatusChanged?.Invoke(this, LiveDanmakuStatus.Closed);
+        // 指数退避（1s / 2s / 4s）：断线后零间隔连打三次全量握手只会白白消耗令牌与风控额度
+        int delaySeconds = (int)Math.Pow(2, retry - 1);
+        Log($"弹幕连接断开，{delaySeconds} 秒后第 {retry} 次重连");
+        _ = ReconnectAfterDelayAsync(generation, retry, delaySeconds);
+    }
+
+    /// <summary>退避等待后重连。等待期间被 Stop / 重新 Start 则本次重连作废</summary>
+    private async Task ReconnectAfterDelayAsync(int generation, int retry, int delaySeconds)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+
+        lock (_sync)
+        {
+            if (!IsCurrent(generation)) return;
+        }
+
+        Log($"弹幕重连开始（第 {retry} 次）");
+        _ = ConnectAsync(_authorId, generation);
     }
 
     /// <summary>
@@ -380,22 +428,26 @@ public sealed class LiveDanmakuService : IDisposable
     /// <summary>断开连接（离开直播间 / 换房间时调用）</summary>
     public void Stop(bool notify = true)
     {
-        _stopping = true;
+        lock (_sync)
+        {
+            _stopping = true;
+            _generation++;   // 作废所有在途握手 / 退避重连
 
-        try
-        {
-            if (_client is not null)
+            try
             {
-                _client.Handler -= OnHandler;
-                _client.OnStart -= OnClientStart;
-                _client.OnEnd -= OnClientEnd;
-                _client.Stop("page closed");
-                _client = null;
+                if (_client is not null)
+                {
+                    _client.Handler -= OnHandler;
+                    _client.OnStart -= OnClientStart;
+                    _client.OnEnd -= OnClientEnd;
+                    _client.Stop("page closed");
+                    _client = null;
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            Log($"关闭弹幕连接失败：{ex.Message}");
+            catch (Exception ex)
+            {
+                Log($"关闭弹幕连接失败：{ex.Message}");
+            }
         }
 
         if (notify) StatusChanged?.Invoke(this, LiveDanmakuStatus.Closed);

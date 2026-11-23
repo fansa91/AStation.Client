@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Navigation;
+using FFmpegInteropX;
 using System;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
@@ -39,6 +40,9 @@ public sealed partial class LiveRoomPage : Page
     private LiveStreamResult? _streams;
     private bool _suppressQualityChange;
     private bool _danmakuStarted;
+
+    /// <summary>当前 FFmpeg 解码源。换档位/离开页面时 Dispose（否则 native 解码上下文靠 GC 兜底）</summary>
+    private FFmpegMediaSource? _ffmpegSource;
 
     /// <summary>控制栏「清晰度」Flyout 里的码率列表（与侧栏列表共用同一份数据）</summary>
     private ListView _flyoutQualityList = null!;
@@ -261,6 +265,10 @@ public sealed partial class LiveRoomPage : Page
         mp?.Pause();
         Overlay.MediaElement.Source = null;
 
+        // 释放 FFmpeg 解码源（直播是常驻解码，不显式释放就只能靠 GC 兜底）
+        _ffmpegSource?.Dispose();
+        _ffmpegSource = null;
+
         DetachDanmaku();
 
         // 离开页面时务必还原窗口呈现方式，否则会卡在全屏
@@ -283,6 +291,12 @@ public sealed partial class LiveRoomPage : Page
 
     private void DetachDanmaku()
     {
+        // 事件在构造函数里订阅到了单例（ServiceLocator.LiveDanmaku）上，
+        // 无论本页有没有真正启动过弹幕通道都要退订：否则单例会一直扣住已离开的页面
+        //（内存泄漏 + 重进直播间后新旧页面重复收弹幕）
+        _liveDanmaku.MessageReceived -= LiveDanmaku_MessageReceived;
+        _liveDanmaku.StatusChanged -= LiveDanmaku_StatusChanged;
+
         if (!_danmakuStarted) return;
 
         _danmakuStarted = false;
@@ -404,7 +418,14 @@ public sealed partial class LiveRoomPage : Page
 
         try
         {
-            Overlay.MediaElement.Source = await FFmpegPlayback.CreateAsync(quality.Url, settings.LiveHardwareDecode);
+            var source = await FFmpegPlayback.CreateAsync(quality.Url, settings.LiveHardwareDecode);
+
+            var old = _ffmpegSource;
+            _ffmpegSource = source;
+            Overlay.MediaElement.Source = null;   // 先摘掉旧解码源再释放，避免 native 句柄还挂在播放器上
+            old?.Dispose();
+
+            Overlay.MediaElement.Source = source.CreateMediaPlaybackItem();
             Overlay.MediaElement.AutoPlay = true;
             Overlay.MediaElement.MediaPlayer?.Play();
 
