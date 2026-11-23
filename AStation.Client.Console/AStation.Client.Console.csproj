@@ -10,7 +10,10 @@
          不再随包携带上百个 dll；框架依赖 / 自包含两种发布方式都适用 -->
     <PublishSingleFile Condition="'$(PublishSingleFile)' == ''">true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+
+    <!-- 单文件压缩只对自包含发布有效：框架依赖发布加上它会直接
+         NETSDK1176（Compression ... only supported when publishing a self-contained application） -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' != 'false'">true</EnableCompressionInSingleFile>
 
     <!-- 关掉单文件兼容性分析器：它会隐式引入 Microsoft.NET.ILLink.Tasks，
          而该包的版本跟随 SDK 补丁号（本机 10.0.13 / CI 10.0.15）。
